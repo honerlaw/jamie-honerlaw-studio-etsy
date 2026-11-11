@@ -1,0 +1,64 @@
+# Weekly: compare Etsy's live OpenAPI spec with the committed snapshot and open
+# (or update) an issue when they differ. Informational; not part of `ci-pass`.
+name: Etsy spec drift
+
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch live spec and compare
+        id: compare
+        run: |
+          curl --fail --silent --show-error --location \
+            https://www.etsy.com/openapi/generated/oas/3.0.0.json -o /tmp/live.json
+          # A non-JSON response (an HTML error page served with 200) is a fetch
+          # failure, not drift: fail the run instead of filing a bogus issue.
+          if ! jq -S . /tmp/live.json > /tmp/live.sorted; then
+            echo "::error::Etsy returned something that is not JSON."
+            exit 1
+          fi
+          jq -S . etsy/openapi.json > /tmp/snap.sorted
+          if diff -q /tmp/snap.sorted /tmp/live.sorted > /dev/null; then
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+            { diff -u /tmp/snap.sorted /tmp/live.sorted || true; } | head -c 60000 > /tmp/diff.txt
+          fi
+      - name: Open or update the drift issue
+        if: steps.compare.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Etsy OpenAPI spec drifted from etsy/openapi.json
+        run: |
+          {
+            echo 'The live spec differs from the committed snapshot. Review the diff, then in a PR run:'
+            echo
+            echo '```sh'
+            echo 'curl -o etsy/openapi.json https://www.etsy.com/openapi/generated/oas/3.0.0.json'
+            echo 'npm run gen:etsy-types'
+            echo '```'
+            echo
+            echo '<details><summary>diff (truncated to 60 KB)</summary>'
+            echo
+            echo '```diff'
+            cat /tmp/diff.txt
+            echo '```'
+            echo '</details>'
+          } > /tmp/body.md
+          existing="$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title \
+            --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file /tmp/body.md
+          else
+            gh issue create --title "$TITLE" --body-file /tmp/body.md
+          fi

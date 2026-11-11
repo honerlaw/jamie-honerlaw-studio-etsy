@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.wrangler/
+package-lock.json
+etsy/openapi.json
+src/etsy/generated/
+worker-configuration.d.ts
+docs/research/
+.minerva/

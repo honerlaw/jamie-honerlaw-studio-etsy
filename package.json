@@ -1,0 +1,53 @@
+{
+  "name": "etsy-shop-mcp",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Remote MCP server for managing one Etsy shop from Claude, ChatGPT and other MCP clients.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "knip": "knip",
+    "test": "vitest run --coverage && node scripts/check-coverage-floor.mjs",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "gen:etsy-types": "openapi-typescript etsy/openapi.json -o src/etsy/generated/schema.ts",
+    "check:etsy-types": "node scripts/check-etsy-types.mjs",
+    "dev": "wrangler dev",
+    "gen:worker-types": "wrangler types",
+    "check:worker-types": "wrangler types --check"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.7.0",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
+    "@eslint/js": "10.0.1",
+    "@onerlaw/agentic-eslint-plugin": "0.2.0",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-istanbul": "5.1.0",
+    "eslint": "10.14.0",
+    "eslint-import-resolver-typescript": "4.4.5",
+    "eslint-plugin-import-x": "4.18.1",
+    "eslint-plugin-unicorn": "79.0.0",
+    "jiti": "2.7.0",
+    "knip": "6.45.0",
+    "openapi-typescript": "7.13.0",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0",
+    "wrangler": "4.160.0",
+    "yaml": "2.9.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "esbuild@0.28.2": true,
+    "workerd@1.20260815.1": true,
+    "workerd@1.20261110.1": true,
+    "fsevents": false
+  }
+}
