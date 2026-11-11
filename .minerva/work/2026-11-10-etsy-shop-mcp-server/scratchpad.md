@@ -30,6 +30,20 @@
 - [solo] client provisioning: write a minimal base record only when `lookupClient` is null, then set name/redirects/secret through the library's public `updateClient` (it hashes the secret), re-synced only when an entry's fingerprint changes (tier: solo — internal to the approved replan; test/clients.test.ts runs the full flow against the pinned library, so a record-shape change fails CI)
 - [reviewed — clean] completion verification (phase 2, after replan): Verifier reran all gates (156 tests, 99.5% statements) and accepted criteria 1–11 with test evidence; 12 (owner connects) legitimately deferred. Advisories: no end-to-end chatgpt-client test; no unlisted client_id in a /token form body end to end; a lost OAUTH_KV client record with a surviving fingerprint is never re-provisioned (fails closed) (tier: reviewer floor — the interface is the one the replan approved)
 - [solo] review triage (phase 2, after replan): 4 FIX / 0 SUGGEST / 0 IGNORE from the auth security review (tier: default-solo row — each finding had a concrete failure scenario and an absorbable fix, none had two defensible dispositions, none changes an approved interface). Supersedes the earlier [solo] client-provisioning line: the SHOP_KV marker plus `updateClient` design is replaced by a direct compare-and-put of the record
+- [solo] phase 3 upload POST buffers one image (≤10 MB, content-length checked first) instead of streaming it to R2 (tier: solo — internal to the approved upload design; the 10 MB cap is enforced before the body is read, so memory stays far under 128 MB; magic-byte and dimension checks need the bytes anyway)
+- [solo] phase 3 upload session keyed by listing (`upload-session:<listingId>` holding the nonce and an `r2Key → imageId` map), so `attach_uploaded_photos(listing_id)` needs no token (tier: solo — the tool signature is the approved one; a new request for the same listing replaces the old session)
+- [solo] phase 3 photo rank comes from the R2 key position (0–9); Etsy uploads append with no rank sent (tier: solo — bounds the count without a counter; ordering still follows her chosen order)
+- [solo] phase 3 `get_listing` reads with `includes=Images` (one call) instead of a separate getListingImages (tier: solo — fewer subrequests, same output)
+- [solo] phase 3 `renew_listing` accepts expired, sold_out and inactive listings (tier: solo — all three become active through the same `state=active` write and fee preview)
+- [solo] phase 3 `search_categories` filters the seller taxonomy tree client-side (tier: solo — Etsy has no search endpoint for it; one read)
+- [solo] phase 3 Connecting outcome: not recorded — the owner hasn't reported the post-deploy connection result yet; the user guide keeps the placeholder and the final report asks for it (tier: solo — the proposal says Phase 3 doesn't wait on it)
+
+## Work notes — Phase 3 (2026-11-10)
+- 27 tools (the proposal's list; the "about 35" estimate was high). `test/tools.test.ts` pins the exact set, annotations, and calls every tool once over the protocol.
+- Bugs caught by tests while building: `fetchPages` didn't flag truncation when the cap landed exactly on `maxItems`; `get_views_trend` crashed on a corrupt snapshot (now skipped); an empty or non-numeric `content-length` passed the upload size check (now `/^\d+$/`).
+- Typing helpers: `definedFields` strips undefined keys so form/query bodies satisfy `exactOptionalPropertyTypes`; the inventory PUT body is typed from the generated schema, so Etsy shape drift fails typecheck.
+- Workers test pool: a `ScheduledController` can't cross `exports`, so the cron test imports the worker default and calls `scheduled` directly.
+- Gates: all green, 290 tests in 24 files, gitleaks clean.
 
 ## Work notes — Phase 2 (2026-11-10)
 - **MCP transport:** `@modelcontextprotocol/sdk` 1.32.2 `WebStandardStreamableHTTPServerTransport` in stateless JSON mode, with a fresh `McpServer` per request. No `agents` dependency, and no McpAgent DO.
