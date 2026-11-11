@@ -1,4 +1,4 @@
-import { handleHealth } from "./routes/health";
+import { handleHealth } from "./routes/handle-health";
 
 const worker: ExportedHandler = {
   fetch(request: Request): Response {

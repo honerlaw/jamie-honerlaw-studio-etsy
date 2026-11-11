@@ -22,7 +22,12 @@ case "${1:-}" in
   *) echo "usage: $0 [--disable|--enable]" >&2; exit 2 ;;
 esac
 
-existing_id="$(gh api "repos/$REPO/rulesets" --jq ".[] | select(.name == \"$NAME\") | .id")"
+existing_ids="$(gh api "repos/$REPO/rulesets" --jq ".[] | select(.name == \"$NAME\") | .id")"
+if [ "$(printf '%s' "$existing_ids" | grep -c .)" -gt 1 ]; then
+  echo "More than one ruleset is named '$NAME' (ids: $(echo $existing_ids)); resolve that by hand first." >&2
+  exit 1
+fi
+existing_id="$existing_ids"
 
 if [ -n "$existing_id" ]; then
   echo "$payload" | gh api --method PUT "repos/$REPO/rulesets/$existing_id" --input - > /dev/null

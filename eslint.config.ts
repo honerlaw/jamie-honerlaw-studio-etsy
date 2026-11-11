@@ -2,6 +2,7 @@ import comments from "@eslint-community/eslint-plugin-eslint-comments/configs";
 import js from "@eslint/js";
 import agentic from "@onerlaw/agentic-eslint-plugin";
 import type { Linter } from "eslint";
+import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
 import { importX } from "eslint-plugin-import-x";
 import unicorn from "eslint-plugin-unicorn";
 import tseslint from "typescript-eslint";
@@ -12,6 +13,8 @@ import tseslint from "typescript-eslint";
 // pins the rules the proposal names, so loosening one is a visible test edit.
 
 const TS_FILES = ["**/*.ts"];
+// Every file ESLint lints: TypeScript plus the plain-JS repo scripts.
+const CODE_FILES = ["**/*.{ts,mjs}"];
 
 // Generated code, vendored research and the lint-gate fixtures are excluded
 // from the main run. The fixtures are linted on purpose by tests/lint-gate.test.ts.
@@ -31,8 +34,8 @@ const agenticPlugin = agentic as unknown as NonNullable<Linter.Config["plugins"]
 const config: Linter.Config[] = [
   { ignores: IGNORES },
 
-  // Baseline correctness for every TypeScript file.
-  { files: TS_FILES, ...js.configs.recommended },
+  // Baseline correctness for every linted file, TypeScript and scripts alike.
+  { files: CODE_FILES, ...js.configs.recommended },
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
   {
@@ -44,10 +47,6 @@ const config: Linter.Config[] = [
         project: ["./tsconfig.json", "./tsconfig.node.json"],
         tsconfigRootDir: import.meta.dirname,
       },
-    },
-    linterOptions: {
-      reportUnusedDisableDirectives: "error",
-      reportUnusedInlineConfigs: "error",
     },
     rules: {
       // TypeScript resolves identifiers itself; espree's no-undef misreports types.
@@ -77,6 +76,16 @@ const config: Linter.Config[] = [
       "@typescript-eslint/prefer-readonly": "error",
       "@typescript-eslint/no-unnecessary-condition": "error",
       "@typescript-eslint/only-throw-error": "error",
+    },
+  },
+  {
+    // Core rules for every linted file, scripts included.
+    files: CODE_FILES,
+    linterOptions: {
+      reportUnusedDisableDirectives: "error",
+      reportUnusedInlineConfigs: "error",
+    },
+    rules: {
       eqeqeq: ["error", "always"],
       "no-param-reassign": ["error", { props: true }],
       "no-restricted-syntax": [
@@ -104,14 +113,28 @@ const config: Linter.Config[] = [
   },
 
   // Imports: no cycles, no undeclared dependencies, no default exports.
+  // The TypeScript resolver is load-bearing: without it extensionless imports
+  // never resolve and no-cycle silently checks nothing (pinned by lint-gate).
   {
-    files: TS_FILES,
+    files: CODE_FILES,
     plugins: { "import-x": importX },
     settings: {
+      // Extensions and parsers (as in import-x's TypeScript preset): without
+      // them import-x cannot parse the modules it resolves, and no-cycle sees no edges.
+      "import-x/extensions": [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"],
+      "import-x/parsers": { "@typescript-eslint/parser": [".ts", ".mts", ".cts"] },
+      "import-x/external-module-folders": ["node_modules", "node_modules/@types"],
       "import-x/core-modules": ["cloudflare:workers", "cloudflare:test"],
+      "import-x/resolver-next": [
+        createTypeScriptImportResolver({
+          project: ["./tsconfig.json", "./tsconfig.node.json"],
+          noWarnOnMultipleProjects: true,
+        }),
+      ],
     },
     rules: {
       "import-x/no-cycle": "error",
+      "import-x/no-unresolved": "error",
       "import-x/no-extraneous-dependencies": "error",
       "import-x/no-default-export": "error",
     },
@@ -119,7 +142,7 @@ const config: Linter.Config[] = [
 
   // Selected unicorn correctness rules (not its stylistic opinions).
   {
-    files: TS_FILES,
+    files: CODE_FILES,
     plugins: { unicorn },
     rules: {
       "unicorn/no-for-each": "error",
@@ -160,6 +183,7 @@ const config: Linter.Config[] = [
   {
     // Node-side repo scripts print their results; they never run in the Worker.
     files: ["scripts/**/*.mjs"],
+    languageOptions: { globals: { console: "readonly", process: "readonly" } },
     rules: { "no-console": "off" },
   },
   {

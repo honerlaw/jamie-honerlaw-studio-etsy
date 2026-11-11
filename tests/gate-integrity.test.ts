@@ -56,9 +56,41 @@ const REQUIRED_ERROR_RULES = [
   "import-x/no-cycle",
   "import-x/no-extraneous-dependencies",
   "import-x/no-default-export",
+  "@typescript-eslint/no-unnecessary-condition",
+  "@typescript-eslint/only-throw-error",
+  "import-x/no-unresolved",
+  "unicorn/no-for-each",
+  "unicorn/no-useless-promise-resolve-reject",
+  "unicorn/prefer-node-protocol",
+  "unicorn/throw-new-error",
+  "unicorn/no-thenable",
+  "unicorn/no-instanceof-builtins",
+  "unicorn/error-message",
+  "unicorn/prefer-type-error",
   "agentic/no-credential-in-url",
   "agentic/one-export-per-file",
 ] as const;
+
+// Rules that must also hold for the plain-JS repo scripts (no type information there).
+const REQUIRED_SCRIPT_RULES = [
+  "eqeqeq",
+  "no-param-reassign",
+  "no-undef",
+  "import-x/no-cycle",
+  "agentic/no-credential-in-url",
+] as const;
+
+function severityOf(setting: unknown): unknown {
+  return Array.isArray(setting) ? (setting as readonly unknown[])[0] : setting;
+}
+
+async function rulesFor(file: string): Promise<Record<string, unknown>> {
+  const eslint = new ESLint({ cwd: ROOT, overrideConfigFile: path.join(ROOT, "eslint.config.ts") });
+  const config = (await eslint.calculateConfigForFile(path.join(ROOT, file))) as {
+    readonly rules: Record<string, unknown>;
+  };
+  return config.rules;
+}
 
 interface CompilerOptions {
   readonly compilerOptions: Record<string, unknown>;
@@ -79,6 +111,13 @@ describe("gate integrity", () => {
     expect(compilerOptions["allowJs"]).toBe(false);
   });
 
+  it("keeps tsconfig.node.json from overriding any strict flag", () => {
+    const node = readJson("tsconfig.node.json") as CompilerOptions & { readonly extends: string };
+    expect(node.extends).toBe("./tsconfig.json");
+    // It may only change the environment (lib/types), never a strictness flag.
+    expect(Object.keys(node.compilerOptions).sort()).toStrictEqual(["lib", "types"]);
+  });
+
   it("lints with zero warnings allowed", () => {
     const { scripts } = readJson("package.json") as { readonly scripts: Record<string, string> };
     expect(scripts["lint"]).toContain("--max-warnings 0");
@@ -91,7 +130,9 @@ describe("gate integrity", () => {
     const { thresholds } = config.test.coverage;
     expect(thresholds.lines).toBeGreaterThanOrEqual(90);
     expect(thresholds.branches).toBeGreaterThanOrEqual(90);
-    expect(readText("scripts/check-coverage-floor.mjs")).toMatch(/const FLOOR = (8\d|9\d|100);/u);
+    const floorScript = readText("scripts/check-coverage-floor.mjs");
+    expect(floorScript).toMatch(/const FLOOR = (8\d|9\d|100);/u);
+    expect(floorScript).toContain('const METRICS = ["lines", "branches"];');
     const { scripts } = readJson("package.json") as { readonly scripts: Record<string, string> };
     expect(scripts["test"]).toContain("node scripts/check-coverage-floor.mjs");
   });
@@ -118,18 +159,29 @@ describe("gate integrity", () => {
       expect.arrayContaining(["deletion", "non_fast_forward", "pull_request", "required_status_checks"]),
     );
     const checks = ruleset.rules.find((rule) => rule.type === "required_status_checks")?.parameters;
-    expect(checks?.["required_status_checks"]).toStrictEqual([{ context: "ci-pass" }]);
+    // integration_id 15368 = GitHub Actions: only Actions can satisfy the check,
+    // not any actor with commit-status write access.
+    expect(checks?.["required_status_checks"]).toStrictEqual([{ context: "ci-pass", integration_id: 15368 }]);
   });
 
   it("keeps every named lint rule at error for source files", async () => {
-    const eslint = new ESLint({ cwd: ROOT, overrideConfigFile: path.join(ROOT, "eslint.config.ts") });
-    const config = (await eslint.calculateConfigForFile(path.join(ROOT, "src", "routes", "health.ts"))) as {
-      readonly rules: Record<string, unknown>;
-    };
+    const rules = await rulesFor("src/routes/handle-health.ts");
     for (const rule of REQUIRED_ERROR_RULES) {
-      const setting = config.rules[rule];
-      const severity = Array.isArray(setting) ? (setting as readonly unknown[])[0] : setting;
-      expect(severity, `rule ${rule}`).toBe(2);
+      expect(severityOf(rules[rule]), `rule ${rule}`).toBe(2);
+    }
+  });
+
+  it("keeps the source rules (bar one-export-per-file) at error for tests too", async () => {
+    const rules = await rulesFor("tests/gate-integrity.test.ts");
+    for (const rule of REQUIRED_ERROR_RULES.filter((name) => name !== "agentic/one-export-per-file")) {
+      expect(severityOf(rules[rule]), `rule ${rule}`).toBe(2);
+    }
+  });
+
+  it("keeps the core rules at error for repo scripts", async () => {
+    const rules = await rulesFor("scripts/check-coverage-floor.mjs");
+    for (const rule of REQUIRED_SCRIPT_RULES) {
+      expect(severityOf(rules[rule]), `rule ${rule}`).toBe(2);
     }
   });
 });

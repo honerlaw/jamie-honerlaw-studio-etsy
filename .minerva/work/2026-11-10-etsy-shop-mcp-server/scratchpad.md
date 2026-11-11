@@ -20,6 +20,8 @@
     - fix: get_shop_overview reports `cron: not yet run`; scope-derivation test from spec security annotations
     - fix: Phase 3 live smoke checklist (non-gating); Phase 3 may ship as stacked sub-PRs; CPU-time assumption + Paid fallback
     - fix: @modelcontextprotocol/sdk + zod named in Phase 2; research secret/PII scan before commit; Dependabot group for the Cloudflare/vitest set; re-export fixture; per-phase criteria pointer; Connecting outcome recorded as Phase 3's first commit; Etsy QPS listed as known gap
+- [reviewed — clean] completion verification (phase 1): Verifier reproduced the full gate chain (all exit 0, 15 tests, 100% coverage) and accepted criteria 1–3 and 6. Criteria 4 (ci-pass green on PR) and 5 (ruleset applied) were judged legitimately deferred to ship. Ship to-dos: enable allow_auto_merge + delete_branch_on_merge, apply and verify the ruleset, confirm ci-pass green (tier: reviewer floor — no interface beyond what the proposal approved)
+- [solo] review triage (phase 1): 13 FIX / 1 SUGGEST / 0 IGNORE (tier: default-solo row — every finding had a writable failure scenario and an absorbable fix; none had two defensible dispositions)
 
 ## Work notes — Phase 1 (2026-11-10)
 - `@cloudflare/vitest-pool-workers` is deprecated, renamed to `@cloudflare/vitest-plugin` (1.7.0). It is a Vite plugin `cloudflareTest({ wrangler: { configPath } })` used inside a vitest project, and it supports vitest 5. Switched; the proposal's name is stale.
@@ -32,3 +34,20 @@
 - Research: Etsy's doc HTML is copyrighted, so it is NOT committed to this public repo. Local copies live in gitignored `docs/research/etsy/raw/`. Committed: the OpenAPI spec (`etsy/openapi.json`), `docs/research/etsy/README.md` (source URLs) and `.minerva/reference/etsy-api.md` (our own summary). `headers.txt` was dropped (it held an Etsy anonymous `set-cookie`). Gitleaks: no leaks; the `x-api-key`/`Bearer` strings in the docs are Etsy's placeholder examples.
 - npm 11 `allowScripts`: esbuild and workerd postinstalls approved, fsevents denied (macOS-only optional dependency).
 - `npm audit`: 0 production vulnerabilities. The dev-only advisories (minimatch, undici, zod via wrangler/miniflare, sharp) are transitive through the Cloudflare toolchain.
+
+## Review triage 2026-11-10 (phase 1)
+Independent diff review, 14 findings:
+1. FIX (high): import-x/no-cycle was inert because no TS resolver or parsers were configured. Wired `eslint-import-resolver-typescript` via `import-x/resolver-next` plus `import-x/parsers` and `import-x/extensions`, added `import-x/no-unresolved`, and the lint-gate cycle fixture now proves it fires.
+2. FIX: the spec-drift issue body rendered escaped backticks. It is now built with echo into a `--body-file`.
+3. FIX: core rules and js recommended covered only `.ts`, so `scripts/*.mjs` was nearly unlinted. They now apply to `**/*.{ts,mjs}` with Node globals for scripts, and the lint-gate `loose-script.mjs` fixture proves it.
+4. FIX: the required `ci-pass` check is pinned to `integration_id` 15368 (GitHub Actions), so a forged commit status can't satisfy it.
+5. FIX: the drift workflow fails on a non-JSON response instead of filing a bogus issue.
+6. FIX: ci-structure now rejects `continue-on-error` and `|| true`-style swallowing, and asserts each gate job runs its command.
+7. FIX: `cancel-in-progress` applies only to PRs, never to runs on main.
+8. FIX: apply-ruleset.sh refuses when two rulesets share the name.
+9. FIX: `health.ts` was renamed to `handle-health.ts` (the filename matches the export).
+10. FIX: covered by #1; the resolver dependency is now used.
+11. FIX: gate-integrity also pins tsconfig.node.json (lib/types only), the METRICS list, the unicorn/no-unnecessary-condition/only-throw-error/no-unresolved rules, and rule severities for tests/ and scripts/.
+12. FIX: `tests/check-scripts.test.ts` proves both check scripts can fail. The coverage floor now fails closed on non-numeric pct and on an empty summary.
+13. SUGGEST: `allowScripts` pins exact esbuild/workerd versions, so a Dependabot wrangler bump may pull a new workerd whose postinstall isn't approved. Check it on the first Dependabot PR.
+14. FIX (preemptive): gitleaks-action replaced by the pinned, checksum-verified gitleaks CLI (v8.30.1), which needs no extra token scopes.

@@ -46,6 +46,14 @@ describe("lint gate", () => {
     );
   });
 
+  it("detects import cycles, which needs the TypeScript resolver to be wired", async () => {
+    expect(await ruleIdsFor("cycle-a.ts")).toContain("import-x/no-cycle");
+  });
+
+  it("applies the core rules to plain-JS repo scripts", async () => {
+    expect(await ruleIdsFor("loose-script.mjs")).toContain("eqeqeq");
+  });
+
   it("reports nothing for good.ts", async () => {
     expect(await ruleIdsFor("good.ts")).toStrictEqual([]);
   });

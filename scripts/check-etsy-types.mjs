@@ -6,12 +6,14 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const committedPath = "src/etsy/generated/schema.ts";
+// Optional arguments (used by tests/check-etsy-types.test.ts): spec path, committed types path.
+const specPath = process.argv[2] ?? "etsy/openapi.json";
+const committedPath = process.argv[3] ?? "src/etsy/generated/schema.ts";
 const workDir = mkdtempSync(path.join(tmpdir(), "etsy-types-"));
 const freshPath = path.join(workDir, "schema.ts");
 
 try {
-  execFileSync("npx", ["openapi-typescript", "etsy/openapi.json", "-o", freshPath], { stdio: "pipe" });
+  execFileSync("npx", ["openapi-typescript", specPath, "-o", freshPath], { stdio: "pipe" });
   const committed = readFileSync(committedPath, "utf8");
   const fresh = readFileSync(freshPath, "utf8");
   if (committed !== fresh) {
