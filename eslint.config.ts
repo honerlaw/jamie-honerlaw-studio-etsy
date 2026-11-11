@@ -42,9 +42,10 @@ const config: Linter.Config[] = [
     files: TS_FILES,
     languageOptions: {
       parserOptions: {
-        // Worker code (src/, test/) and Node-side code (tests/, configs) are
-        // type-checked under different lib/types settings, hence two projects.
-        project: ["./tsconfig.json", "./tsconfig.node.json"],
+        // Worker code (src/, test/), Node-side code (tests/, configs) and the
+        // TypeScript repo scripts (scripts/, tests/scripts/, run by Node's type
+        // stripping) are type-checked under different settings, hence three projects.
+        project: ["./tsconfig.json", "./tsconfig.node.json", "./tsconfig.scripts.json"],
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -127,7 +128,7 @@ const config: Linter.Config[] = [
       "import-x/core-modules": ["cloudflare:workers", "cloudflare:test"],
       "import-x/resolver-next": [
         createTypeScriptImportResolver({
-          project: ["./tsconfig.json", "./tsconfig.node.json"],
+          project: ["./tsconfig.json", "./tsconfig.node.json", "./tsconfig.scripts.json"],
           noWarnOnMultipleProjects: true,
         }),
       ],
@@ -190,7 +191,9 @@ const config: Linter.Config[] = [
     rules: { "import-x/no-default-export": "off" },
   },
   {
-    // Node-side repo scripts print their results; they never run in the Worker.
+    // Node-side plain-JS repo scripts print their results; they never run in the Worker.
+    // Deliberately .mjs only: the TypeScript scripts write through scripts/lib/output.ts
+    // and keep the full type-aware rule set (.minerva/reference/deploy.md).
     files: ["scripts/**/*.mjs"],
     languageOptions: { globals: { console: "readonly", process: "readonly" } },
     rules: { "no-console": "off" },

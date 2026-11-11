@@ -9,7 +9,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -21,7 +21,9 @@
     "dev": "wrangler dev",
     "gen:worker-types": "wrangler types --strict-vars=false",
     "check:worker-types": "wrangler types --strict-vars=false --check",
-    "deploy": "wrangler deploy"
+    "check:infra": "terraform fmt -check -recursive infra && terraform -chdir=infra init -backend=false -lockfile=readonly -input=false && terraform -chdir=infra validate",
+    "bootstrap": "node scripts/bootstrap.ts",
+    "apply-environment": "node scripts/apply-environment.ts"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.7.0",

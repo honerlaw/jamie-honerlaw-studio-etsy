@@ -1,6 +1,6 @@
 // Per-file coverage floor. Vitest enforces the global 90% lines/branches
-// thresholds; this enforces that no single file in src/ drops below 80%, so a
-// weak file cannot hide behind the average. Reads coverage/coverage-summary.json
+// thresholds; this enforces that no covered file (src/ and scripts/**/*.ts)
+// drops below 80%, so a weak file cannot hide behind the average. Reads coverage/coverage-summary.json
 // (the istanbul `json-summary` reporter) written by `vitest run --coverage`, or
 // the path given as the first argument (used by tests/coverage-floor.test.ts).
 import { readFileSync } from "node:fs";
@@ -40,5 +40,5 @@ if (failures.length > 0) {
   console.error(`Per-file coverage floor (${FLOOR}%) not met:\n  ${failures.join("\n  ")}`);
   process.exitCode = 1;
 } else {
-  console.log(`Every file in src/ meets the ${FLOOR}% per-file coverage floor.`);
+  console.log(`Every covered file meets the ${FLOOR}% per-file coverage floor.`);
 }

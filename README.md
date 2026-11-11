@@ -24,31 +24,35 @@ npm run dev          # local Worker via wrangler
 npm test             # workerd + Node test projects, with coverage
 ```
 
-Every PR must pass the `ci-pass` check (typecheck, lint, format, knip, tests with coverage, build, generated-types freshness, secret scan). See `AGENTS.md` for the rules.
+Every PR must pass the `ci-pass` check (typecheck, lint, format, knip, tests with coverage, build, generated-types freshness, Terraform fmt and validate, secret scan). See `AGENTS.md` for the rules.
 
 ## Setting up the server
 
-You need the Cloudflare account, the Etsy app and Node 24.
+Production runs from three places, and nothing is set up by hand-typed `wrangler` commands:
 
-1. **Etsy app:** at developer.etsy.com, note the app's keystring and shared secret.
-2. **Secrets file:** copy `.dev.vars.example` to `.dev.vars` (gitignored) and fill it in:
-   - `ETSY_KEYSTRING`, `ETSY_SHARED_SECRET`: from the Etsy app.
-   - `TOKEN_ENC_KEYS`: the output of `printf '{"k1":"%s"}' "$(openssl rand -base64 32)"`, with `TOKEN_ENC_KID=k1`.
-   - `ALLOWED_ETSY_USER_ID`, `ALLOWED_ETSY_SHOP_ID`: leave them `unset` for now. Step 5 finds the real values.
-   - `MCP_CLIENTS`: the apps allowed to connect (see "MCP clients" below). Make each secret with `openssl rand -base64 32`.
-   - `UPLOAD_SIGNING_KEY`: the output of `openssl rand -base64 32`. It signs photo upload links.
-3. **Photo bucket:** run `npx wrangler login`, then `npx wrangler r2 bucket create etsy-shop-uploads` and `npx wrangler r2 bucket lifecycle add etsy-shop-uploads --name expire-uploads --prefix uploads/ --expire-days 1`, which deletes photos that were never attached. R2 has to be enabled on the Cloudflare account first (Cloudflare asks for a payment method even though this use stays inside the free tier).
-4. **First deploy, in bootstrap mode:** run `npx wrangler deploy --secrets-file .dev.vars --var ALLOWLIST_BOOTSTRAP:true`. Wrangler refuses a first deploy that lacks the required secrets, so they go up with it. It also creates the KV namespaces and Durable Objects. The Worker's address looks like `https://etsy-shop-mcp.<subdomain>.workers.dev`.
-5. **Etsy callback:** set the Etsy app's callback URL to `https://<worker address>/callback`.
-6. **Find her Etsy ids:** connect from Claude (see the user guide). In bootstrap mode, the callback page shows her user id and shop id. It grants nothing and stores nothing. Set them with `npx wrangler secret put ALLOWED_ETSY_USER_ID` and `npx wrangler secret put ALLOWED_ETSY_SHOP_ID`. Then run `npm run deploy`, which turns bootstrap off (`ALLOWLIST_BOOTSTRAP` is `"false"` in `wrangler.jsonc`).
-7. **Connect** Claude and ChatGPT as `docs/user-guide.md` describes. Each app asks for its client id and secret from `MCP_CLIENTS`.
-8. **Automatic deploys (optional):** add a `CLOUDFLARE_API_TOKEN` repository secret (an API token with the "Edit Cloudflare Workers" template), plus a `CLOUDFLARE_ACCOUNT_ID` repository variable if the token covers more than one account. `.github/workflows/deploy.yml` then deploys `main` after CI passes. Without the secret, it skips with a notice.
+- **Terraform** (`infra/`) owns the Cloudflare resources the Worker binds to: the `etsy-shop-uploads` R2 bucket and its one-day rule for `uploads/`, and the two KV namespaces. Its state lives in the `etsy-shop-mcp-tfstate` R2 bucket.
+- **Doppler** (project `etsy-shop-mcp`, config `prd`) holds every secret: the eight Worker secrets in `wrangler.jsonc`'s `secrets.required`, plus the Cloudflare API token and account id the deploy uses.
+- **GitHub Actions** (`.github/workflows/deploy.yml`) deploys `main` after CI passes on every merge. It holds one secret, `DOPPLER_TOKEN`: a read-only Doppler service token in the `production` environment, which only `main` can deploy to.
+
+`.minerva/reference/deploy.md` describes how a deploy runs. To set it all up once:
+
+1. **Prerequisites:** a Cloudflare account with R2 enabled (Cloudflare asks for a payment method even though this use stays inside the free tier) and a workers.dev subdomain (Workers & Pages in the dashboard picks one the first time). A Doppler account. Locally: Node 24, `npm ci`, the Doppler CLI (`doppler login`) and the GitHub CLI (`gh auth login` as a repo admin).
+2. **Etsy app:** at developer.etsy.com, note the app's keystring and shared secret.
+3. **Cloudflare API token:** create one (My Profile → API Tokens, or the account's API Tokens page) with Account: Workers Scripts Edit, Workers KV Storage Edit, Workers R2 Storage Edit and Account Settings Read, and User: Memberships Read, limited to this account. Note the account id too (on the account's home page).
+4. **Run `npm run bootstrap`.** It asks for the Cloudflare token, the account id and the Etsy keystring and shared secret, without echoing the secrets, and stores them in Doppler. It generates the other secrets (`TOKEN_ENC_KEYS`, `TOKEN_ENC_KID`, `UPLOAD_SIGNING_KEY`, `MCP_CLIENTS` with a Claude and a ChatGPT client) and sets her ids to `unset`, which makes every sign-in fail closed. Then it creates the state bucket, limits the GitHub `production` environment to `main` (`.github/environments/production.json`), and stores a read-only Doppler service token there as `DOPPLER_TOKEN`. It never prints a secret, and running it again only fills what is missing.
+5. **First deploy, in bootstrap mode:** `gh workflow run deploy.yml -f bootstrap=true`. Terraform creates the bucket and namespaces, and Wrangler deploys the Worker with `ALLOWLIST_BOOTSTRAP` on. The log shows the Worker's address, which looks like `https://etsy-shop-mcp.<subdomain>.workers.dev`. Don't merge anything to `main` until step 8: a merge's deploy can replace this queued run, or turn bootstrap mode off after it.
+6. **Etsy callback:** set the Etsy app's callback URL to `https://<worker address>/callback`.
+7. **Connect from Claude** as `docs/user-guide.md` describes. The client id is `claude`, and its secret is in `doppler secrets get MCP_CLIENTS --plain --project etsy-shop-mcp --config prd`. In bootstrap mode, the callback page shows her Etsy user id and shop id. It grants nothing and stores nothing.
+8. **Set her ids and deploy normally:** `doppler secrets set ALLOWED_ETSY_USER_ID=<user id> ALLOWED_ETSY_SHOP_ID=<shop id> --project etsy-shop-mcp --config prd`, then `gh workflow run deploy.yml`, which turns bootstrap off (`ALLOWLIST_BOOTSTRAP` is `"false"` in `wrangler.jsonc`).
+9. **Connect** Claude again, and ChatGPT the same way (client id `chatgpt`, its secret from the same command).
+
+From then on, every merge to `main` deploys once CI passes. Changing a secret in Doppler deploys nothing by itself: run `gh workflow run deploy.yml` after.
 
 Local development uses `.dev.vars` (copy `.dev.vars.example`) and `npm run dev`.
 
 ### MCP clients
 
-`MCP_CLIENTS` is a JSON list on one line in `.dev.vars`, and `npx wrangler secret put MCP_CLIENTS` in production:
+`MCP_CLIENTS` is a JSON list on one line, in `.dev.vars` locally and in Doppler for production (`npm run bootstrap` generates it):
 
 ```json
 [
@@ -73,15 +77,26 @@ Ids are 3–40 characters of lowercase letters, digits and `-`. Secrets need at 
 
 ## Runbook
 
-- **A device with a connected app is lost, or anything looks wrong:** run `scripts/revoke-all-grants.sh`. It needs wrangler logged in, plus jq. Every connected client is cut off and must connect again, which needs her Etsy sign-in. To cut Etsy off too, revoke the app under Etsy → Account settings → Apps (or rotate `TOKEN_ENC_KEYS` as below without keeping the old key), and change her Etsy password.
-- **Rotate the upload signing key:** `npx wrangler secret put UPLOAD_SIGNING_KEY` with a new `openssl rand -base64 32`. Open upload links stop working; nothing else is affected.
+Secrets live in Doppler (`etsy-shop-mcp/prd`). "Set" below means `doppler secrets set NAME --project etsy-shop-mcp --config prd` (it reads the value from stdin, so it stays out of your shell history), and "deploy" means `gh workflow run deploy.yml`. A Doppler change reaches the Worker only on the next deploy.
+
+- **A device with a connected app is lost, or anything looks wrong:** run `scripts/revoke-all-grants.sh`. It needs wrangler logged in (`npx wrangler login`), plus jq. It finds the OAuth namespace by the title Terraform gives it (`etsy-shop-mcp-oauth`), through `wrangler kv namespace list`, since `wrangler.jsonc` carries no KV ids. Every connected client is cut off and must connect again, which needs her Etsy sign-in. To cut Etsy off too, revoke the app under Etsy → Account settings → Apps (or rotate `TOKEN_ENC_KEYS` as below without keeping the old key), and change her Etsy password.
+- **Rotate the upload signing key:** set `UPLOAD_SIGNING_KEY` to a new `openssl rand -base64 32`, then deploy. Open upload links stop working; nothing else is affected.
 - **The daily snapshot failed:** `get_shop_overview` shows the last run's error. "Etsy isn't connected" means she needs to reconnect; anything else usually clears on the next day's run.
-- **Rotate the Etsy shared secret:** create a new one in the Etsy developer portal, then `npx wrangler secret put ETSY_SHARED_SECRET`.
-- **Rotate the vault key:** add a new key next to the old one (`{"k1":"…","k2":"…"}`) and set `TOKEN_ENC_KID` to `k2`. The vault re-seals its record under `k2` the next time it's read. After that, remove `k1`. Dropping a key whose record hasn't been re-sealed means she reconnects once.
-- **Change who is allowed:** update `ALLOWED_ETSY_USER_ID` and `ALLOWED_ETSY_SHOP_ID`. Grants for the old ids stop working at once (`/mcp` re-checks them on every call).
-- **Add an MCP client:** add an entry to `MCP_CLIENTS` and `npx wrangler secret put MCP_CLIENTS`. Then enter its id and secret in the app.
-- **Cut one app off:** remove its entry from `MCP_CLIENTS` and put the secret again. Its tokens stop working at once (`/mcp` re-checks the client on every call), and it can't get new ones. If you remove it because its secret leaked, also run `scripts/revoke-all-grants.sh`. Otherwise, re-adding the same id later would revive its unexpired access tokens for up to an hour.
-- **Rotate an app's secret:** change its `secret` in `MCP_CLIENTS`, put the secret, and update the secret in the app. Existing access tokens keep working until they expire (up to an hour). Refreshing them needs the new secret. To cut them off at once, run `scripts/revoke-all-grants.sh`.
+- **Rotate the Etsy shared secret:** create a new one in the Etsy developer portal, set `ETSY_SHARED_SECRET`, then deploy.
+- **Rotate the vault key:** add a new key next to the old one in `TOKEN_ENC_KEYS` (`{"k1":"…","k2":"…"}`), set `TOKEN_ENC_KID` to `k2`, and deploy. The vault re-seals its record under `k2` the next time it's read. After that, remove `k1` and deploy. Dropping a key whose record hasn't been re-sealed means she reconnects once.
+- **Change who is allowed:** set `ALLOWED_ETSY_USER_ID` and `ALLOWED_ETSY_SHOP_ID`, then deploy. Grants for the old ids stop working at once (`/mcp` re-checks them on every call).
+- **Add an MCP client:** add an entry to `MCP_CLIENTS`, set it, and deploy. Then enter its id and secret in the app.
+- **Cut one app off:** remove its entry from `MCP_CLIENTS`, set it, and deploy. Its tokens stop working at once (`/mcp` re-checks the client on every call), and it can't get new ones. If you remove it because its secret leaked, also run `scripts/revoke-all-grants.sh`. Otherwise, re-adding the same id later would revive its unexpired access tokens for up to an hour.
+- **Rotate an app's secret:** change its `secret` in `MCP_CLIENTS`, set it, deploy, and update the secret in the app. Existing access tokens keep working until they expire (up to an hour). Refreshing them needs the new secret. To cut them off at once, run `scripts/revoke-all-grants.sh`.
+- **During first-time setup:** don't merge to `main` between the bootstrap dispatch (setup step 5) and setting her ids (step 8). A merge's deploy can replace the queued bootstrap run, or turn bootstrap mode off once it ran; if that happens, dispatch `gh workflow run deploy.yml -f bootstrap=true` again.
+- **Rotate `DOPPLER_TOKEN`:** revoke the old service token in Doppler (project `etsy-shop-mcp` → `prd` → Access), then run `npm run bootstrap -- --rotate-doppler-token`.
+- **Rotate the Cloudflare API token:** create the new token (setup step 3), set `CLOUDFLARE_API_TOKEN`, deploy, then delete the old token. The Terraform state credentials come from the token, so nothing else changes.
+- **A deploy failed with "the Terraform plan deletes or replaces":** a merged change removed or renamed a resource in `infra/`. Every later deploy fails the same way until a fix is merged. To rename, add a `moved {}` block; to stop managing a resource, a `removed {}` block. Only if the deletion is really meant, run `gh workflow run deploy.yml -f allow_destroy=true` (the bucket and both namespaces also carry `prevent_destroy`, so deleting one needs that removed in a PR first).
+- **A deploy failed and you want to retry it:** use `gh workflow run deploy.yml`, not "Re-run failed jobs" on an older run. A re-run reuses that run's old commit: its deploy job stops itself if the commit is no longer the tip of `main`, but it can first displace a waiting deploy of the tip (it warns when that may have happened).
+- **A Terraform error in the deploy after a merge:** `terraform validate` in CI can't see Cloudflare API errors (a taken name, a missing permission), so they first show up in the Deploy run. Fix it in a PR; the merge deploys again.
+- **Terraform state is lost or wrong:** the state bucket keeps no old versions. Never run `terraform import` locally. Commit `import {}` blocks for the existing resources (KV titles are unique per account, so a deploy with missing state fails on create instead of making empty namespaces) and let the Deploy workflow apply them.
+- **A secret was removed from `secrets.required`:** Wrangler adds and updates secrets but never deletes one, so the old secret stays on the Worker until `npx wrangler secret delete <NAME> --name etsy-shop-mcp`.
+- **GitHub Actions is down:** deploys wait. There is no local deploy path, so Terraform state has only one writer.
 
 ## Branch protection
 

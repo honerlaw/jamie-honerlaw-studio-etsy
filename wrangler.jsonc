@@ -16,10 +16,11 @@
     ],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["EtsyTokenVault", "OneTimeStore"] }],
-  // No ids: `wrangler deploy` provisions both namespaces on first deploy.
+  // No ids here: Terraform (infra/) creates both namespaces, and the Deploy workflow
+  // fills their ids into the generated wrangler.deploy.json.
   "kv_namespaces": [{ "binding": "OAUTH_KV" }, { "binding": "SHOP_KV" }],
-  // Staged photo uploads under uploads/<nonce>/. README: create the bucket and its
-  // one-day lifecycle rule before the first deploy that includes it.
+  // Staged photo uploads under uploads/<nonce>/. Terraform (infra/) owns the bucket
+  // and its one-day lifecycle rule.
   "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "etsy-shop-uploads" }],
   // The daily views snapshot (and Etsy token refresh), 06:17 UTC.
   "triggers": { "crons": ["17 6 * * *"] },
