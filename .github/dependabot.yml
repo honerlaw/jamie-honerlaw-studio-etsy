@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    versioning-strategy: increase
+    groups:
+      # These four must move together; they are tested as one compatible set.
+      cloudflare-test-runtime:
+        patterns:
+          - "wrangler"
+          - "@cloudflare/vitest-plugin"
+          - "vitest"
+          - "@vitest/coverage-istanbul"
+      lint-toolchain:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
+          - "@eslint-community/*"
+          - "typescript-eslint"
+          - "eslint-plugin-*"
+          - "eslint-import-resolver-*"
+          - "@onerlaw/agentic-eslint-plugin"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -1,0 +1,11 @@
+// Cloudflare Workers configuration. Phase 1 is deliberately minimal: the build
+// gate (`wrangler deploy --dry-run`) and the Workers test project both read it.
+// Bindings (Durable Objects, KV, R2, cron) are added by the phase that uses them.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "etsy-shop-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+}

@@ -1,0 +1,43 @@
+# Weekly: compare Etsy's live OpenAPI spec with the committed snapshot and open
+# (or update) an issue when they differ. Informational; not part of `ci-pass`.
+name: Etsy spec drift
+
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch live spec and compare
+        id: compare
+        run: |
+          curl --fail --silent --show-error --location \
+            https://www.etsy.com/openapi/generated/oas/3.0.0.json -o /tmp/live.json
+          if jq -S . /tmp/live.json > /tmp/live.sorted && jq -S . etsy/openapi.json > /tmp/snap.sorted \
+            && diff -q /tmp/snap.sorted /tmp/live.sorted > /dev/null; then
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+            { diff -u /tmp/snap.sorted /tmp/live.sorted | head -c 60000 || true; } > /tmp/diff.txt
+          fi
+      - name: Open or update the drift issue
+        if: steps.compare.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Etsy OpenAPI spec drifted from etsy/openapi.json"
+          body="$(printf 'The live spec differs from the committed snapshot. Review the diff, then run \`curl -o etsy/openapi.json https://www.etsy.com/openapi/generated/oas/3.0.0.json && npm run gen:etsy-types\` in a PR.\n\n<details><summary>diff (truncated)</summary>\n\n\`\`\`diff\n%s\n\`\`\`\n</details>' "$(cat /tmp/diff.txt)")"
+          existing="$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

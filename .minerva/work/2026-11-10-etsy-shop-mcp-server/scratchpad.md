@@ -20,3 +20,15 @@
     - fix: get_shop_overview reports `cron: not yet run`; scope-derivation test from spec security annotations
     - fix: Phase 3 live smoke checklist (non-gating); Phase 3 may ship as stacked sub-PRs; CPU-time assumption + Paid fallback
     - fix: @modelcontextprotocol/sdk + zod named in Phase 2; research secret/PII scan before commit; Dependabot group for the Cloudflare/vitest set; re-export fixture; per-phase criteria pointer; Connecting outcome recorded as Phase 3's first commit; Etsy QPS listed as known gap
+
+## Work notes — Phase 1 (2026-11-10)
+- `@cloudflare/vitest-pool-workers` is deprecated, renamed to `@cloudflare/vitest-plugin` (1.7.0). It is a Vite plugin `cloudflareTest({ wrangler: { configPath } })` used inside a vitest project, and it supports vitest 5. Switched; the proposal's name is stale.
+- `wrangler types` now generates runtime types (`worker-configuration.d.ts`, ~16k lines, committed) and supersedes `@cloudflare/workers-types`, which is removed. `exports.default.fetch()` from `cloudflare:workers` is only typed with it (`Cloudflare.GlobalProps.mainModule`). CI checks freshness with `wrangler types --check`, folded into the `generated-types-match` job alongside the Etsy types check. The proposal named that job `etsy-types-match-snapshot`.
+- TypeScript is pinned to **5.9.3**, not 6/7: typescript-eslint 8.72 peers `typescript <6.1`, and openapi-typescript 7.13 peers `^5`. Revisit when both widen.
+- eslint-plugin-unicorn 79 has no `no-array-for-each`; the rule is `unicorn/no-for-each`.
+- Type-aware lint uses explicit `project: [tsconfig.json, tsconfig.node.json]`, not the project service. Worker code and Node-side code need different `types`, and the project service can't map tests/ to the second config.
+- `agentic/one-export-per-file` does **not** count re-exports (`export { x } from`), as pinned by the lint-gate re-export fixture. `src/index.ts` needs no carve-out for it when it re-exports DO classes.
+- The per-file 80% coverage floor is enforced by `scripts/check-coverage-floor.mjs` over istanbul's `json-summary`, because vitest's `perFile` applies one number to every file and can't also hold a 90% global.
+- Research: Etsy's doc HTML is copyrighted, so it is NOT committed to this public repo. Local copies live in gitignored `docs/research/etsy/raw/`. Committed: the OpenAPI spec (`etsy/openapi.json`), `docs/research/etsy/README.md` (source URLs) and `.minerva/reference/etsy-api.md` (our own summary). `headers.txt` was dropped (it held an Etsy anonymous `set-cookie`). Gitleaks: no leaks; the `x-api-key`/`Bearer` strings in the docs are Etsy's placeholder examples.
+- npm 11 `allowScripts`: esbuild and workerd postinstalls approved, fsevents denied (macOS-only optional dependency).
+- `npm audit`: 0 production vulnerabilities. The dev-only advisories (minimatch, undici, zod via wrangler/miniflare, sharp) are transitive through the Cloudflare toolchain.
