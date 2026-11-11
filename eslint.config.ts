@@ -134,7 +134,10 @@ const config: Linter.Config[] = [
     },
     rules: {
       "import-x/no-cycle": "error",
-      "import-x/no-unresolved": "error",
+      // The MCP SDK publishes its server modules only through a `./*` exports wildcard
+      // whose `types` target (`*.d.ts` appended to `mcp.js`) the resolver can't follow.
+      // tsc and the build gate both resolve these imports, so nothing goes unchecked.
+      "import-x/no-unresolved": ["error", { ignore: ["^@modelcontextprotocol/sdk/[A-Za-z/]+\\.js$"] }],
       "import-x/no-extraneous-dependencies": "error",
       "import-x/no-default-export": "error",
     },
@@ -174,6 +177,12 @@ const config: Linter.Config[] = [
     // The Workers runtime loads the module's default export as the handler.
     files: ["src/index.ts"],
     rules: { "import-x/no-default-export": "off" },
+  },
+  {
+    // The logger is the one module allowed to write to the console; it drops every
+    // field not on its allowlist, so nothing else may bypass it.
+    files: ["src/log/log-event.ts"],
+    rules: { "no-console": "off" },
   },
   {
     // Tool configs are loaded by their CLIs through a default export.
