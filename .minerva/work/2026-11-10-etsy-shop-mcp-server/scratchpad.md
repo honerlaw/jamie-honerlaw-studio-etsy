@@ -51,3 +51,8 @@ Independent diff review, 14 findings:
 12. FIX: `tests/check-scripts.test.ts` proves both check scripts can fail. The coverage floor now fails closed on non-numeric pct and on an empty summary.
 13. SUGGEST: `allowScripts` pins exact esbuild/workerd versions, so a Dependabot wrangler bump may pull a new workerd whose postinstall isn't approved. Check it on the first Dependabot PR.
 14. FIX (preemptive): gitleaks-action replaced by the pinned, checksum-verified gitleaks CLI (v8.30.1), which needs no extra token scopes.
+
+## Mode B promotions (phase 1)
+- import-x resolver/parsers constraint → promoted to .minerva/knowledge/2026-11-10-constraint-import-x-needs-typescript-resolver-and-parsers.md
+- self-pinning gates pattern → promoted to .minerva/knowledge/2026-11-10-pattern-gates-pin-themselves.md
+- toolchain version pins (TS 5.9, vitest-plugin, wrangler types, unicorn rename, allowScripts) → promoted to .minerva/knowledge/2026-11-10-constraint-toolchain-version-pins.md
