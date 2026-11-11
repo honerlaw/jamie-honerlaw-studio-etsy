@@ -8,7 +8,7 @@ import { logEvent } from "../src/log/log-event";
 import { escapeHtml } from "../src/pages/escape-html";
 import { htmlPage } from "../src/pages/html-page";
 import { withAccessToken } from "../src/tools/with-access-token";
-import type { ShopToolDeps } from "../src/tools/shop-tool-deps";
+import { toolDeps } from "./support/tool-deps";
 
 describe("readCookie", () => {
   it("matches the exact name, not a prefix or a value substring", () => {
@@ -57,23 +57,8 @@ describe("revokeUserGrants", () => {
 });
 
 describe("withAccessToken", () => {
-  const deps = (reason: "unavailable" | "reconnect"): ShopToolDeps & { revoked: number } => {
-    const state = {
-      revoked: 0,
-      shopId: "2002",
-      getAccessToken: () => Promise.resolve({ ok: false as const, reason }),
-      vaultStatus: () => Promise.resolve({ connected: false, obtainedAt: null }),
-      etsy: () => {
-        throw new Error("not used");
-      },
-      readCronStatus: () => Promise.resolve(null),
-      revokeGrants: () => {
-        state.revoked += 1;
-        return Promise.resolve();
-      },
-    };
-    return state;
-  };
+  const deps = (reason: "unavailable" | "reconnect") =>
+    toolDeps({ getAccessToken: () => Promise.resolve({ ok: false as const, reason }) });
 
   it("keeps the grants and says to retry when Etsy is unavailable", async () => {
     const d = deps("unavailable");

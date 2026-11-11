@@ -3,11 +3,8 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { z } from "zod";
 
 import type { McpClient } from "../auth/mcp-clients";
-import { revokeUserGrants } from "../auth/revoke-user-grants";
-import { createEtsyClient } from "../etsy/create-etsy-client";
-import { etsyApiKey } from "../etsy/etsy-api-key";
-import { sleep } from "../etsy/sleep";
 import { buildMcpServer } from "./build-mcp-server";
+import { buildShopToolDeps } from "./build-shop-tool-deps";
 
 const PROPS = z.object({ etsyUserId: z.string().min(1), shopId: z.string().min(1) });
 const AUTH = z.object({ audience: z.string(), clientId: z.string().optional() });
@@ -44,19 +41,7 @@ export async function handleMcp(
   ) {
     return new Response("Forbidden", { status: 403 });
   }
-  const { etsyUserId, shopId } = props.data;
-  const vault = env.ETSY_TOKEN_VAULT.getByName(shopId);
-  const apiKey = etsyApiKey(env);
-  const server = buildMcpServer({
-    shopId,
-    getAccessToken: () => vault.getAccessToken(),
-    vaultStatus: () => vault.status(),
-    etsy: (accessToken) => createEtsyClient({ apiKey, accessToken, fetch: (r) => fetch(r), sleep }),
-    readCronStatus: () => env.SHOP_KV.get("cron:last-run"),
-    revokeGrants: async () => {
-      await revokeUserGrants(oauth, etsyUserId);
-    },
-  });
+  const server = buildMcpServer(buildShopToolDeps(env, oauth, { ...props.data, origin }));
   // No session id generator: stateless mode, plain JSON responses.
   const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
   await server.connect(transport);

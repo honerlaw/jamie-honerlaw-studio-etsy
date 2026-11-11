@@ -50,3 +50,37 @@ describe("OneTimeStore", () => {
     });
   });
 });
+
+describe("OneTimeStore leases (upload sessions)", () => {
+  it("peeks without using the entry up", async () => {
+    await stub().put("p", "v", 60_000);
+    expect(await stub().peek("p")).toStrictEqual({ value: "v", leased: false });
+    expect(await stub().peek("p")).toStrictEqual({ value: "v", leased: false });
+    expect(await stub().peek("missing")).toBeNull();
+  });
+
+  it("grants a lease to exactly one of many concurrent claimers", async () => {
+    await stub().put("lease", "v", 60_000);
+    const results = await Promise.all(Array.from({ length: 10 }, () => stub().claim("lease", 60_000)));
+    expect(results.filter((result) => result === "v")).toHaveLength(1);
+    expect(await stub().peek("lease")).toStrictEqual({ value: "v", leased: true });
+  });
+
+  it("updates under a lease, frees it on release, and lets an expired lease be claimed again", async () => {
+    await stub().put("s", "v1", 60_000);
+    expect(await stub().claim("s", 60_000)).toBe("v1");
+    expect(await stub().update("s", "v2")).toBe(true);
+    expect(await stub().peek("s")).toStrictEqual({ value: "v2", leased: true });
+    await stub().release("s");
+    expect(await stub().claim("s", -1)).toBe("v2");
+    expect(await stub().claim("s", 60_000)).toBe("v2");
+  });
+
+  it("does nothing for a missing or expired entry", async () => {
+    expect(await stub().claim("gone", 1000)).toBeNull();
+    expect(await stub().update("gone", "v")).toBe(false);
+    await stub().release("gone");
+    await stub().put("expired", "v", -1);
+    expect(await stub().peek("expired")).toBeNull();
+  });
+});

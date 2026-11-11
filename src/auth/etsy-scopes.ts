@@ -3,8 +3,8 @@
 // union of these operations' `security` scopes in etsy/openapi.json equals ETSY_SCOPES,
 // so a tool that needs a new scope fails CI instead of failing at runtime.
 //
-// The table lists every tool planned for v1 (most ship in Phase 3) so that she grants
-// the full set once, at her first sign-in, and never has to reconnect for new tools.
+// Every key except sign_in and daily_views_snapshot (the cron) is a registered MCP tool;
+// test/tools.test.ts checks the two sets are equal.
 export const TOOL_OPERATIONS: Readonly<Record<string, readonly string[]>> = {
   sign_in: ["getMe"],
   get_shop_overview: ["getShop"],
@@ -14,13 +14,13 @@ export const TOOL_OPERATIONS: Readonly<Record<string, readonly string[]>> = {
   list_return_policies: ["getShopReturnPolicies"],
   search_categories: ["getSellerTaxonomyNodes"],
   list_listings: ["getListingsByShop"],
-  get_listing: ["getListing", "getListingImages"],
+  get_listing: ["getListing"],
   create_draft_listing: ["createDraftListing"],
   update_listing: ["updateListing"],
   request_photo_upload: ["getListing"],
   attach_uploaded_photos: ["uploadListingImage"],
-  add_listing_image: ["uploadListingImage"],
-  remove_listing_image: ["deleteListingImage"],
+  add_listing_image: ["getListing", "uploadListingImage"],
+  remove_listing_image: ["getListing", "deleteListingImage"],
   publish_listing: ["getListing", "updateListing"],
   renew_listing: ["getListing", "updateListing"],
   deactivate_listing: ["getListing", "updateListing"],

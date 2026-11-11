@@ -9,6 +9,7 @@ const TEST_BINDINGS = {
   ALLOWED_ETSY_SHOP_ID: "2002",
   TOKEN_ENC_KEYS: JSON.stringify({ k1: "A".repeat(43) + "=" }),
   TOKEN_ENC_KID: "k1",
+  UPLOAD_SIGNING_KEY: "test-only-".repeat(4),
   MCP_CLIENTS: JSON.stringify([
     {
       id: "claude",

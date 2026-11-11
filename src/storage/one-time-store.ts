@@ -3,12 +3,21 @@ import { DurableObject } from "cloudflare:workers";
 interface Entry {
   readonly value: string;
   readonly expiresAt: number;
+  // While set and in the future, one caller holds an exclusive lease (see `claim`).
+  readonly leaseUntil?: number;
 }
 
-// Single-use values with a time limit: OAuth `state`, upload nonces and confirmation
-// tokens. KV can't do this safely, because it is eventually consistent and has no
-// compare-and-swap. A Durable Object runs one event at a time and its synchronous
-// storage calls never yield, so `consume` reads and deletes in one uninterruptible step.
+// What `peek` reports about a live entry.
+export interface PeekResult {
+  readonly value: string;
+  readonly leased: boolean;
+}
+
+// Single-use values with a time limit: OAuth `state`, confirmation tokens and photo
+// upload sessions. KV can't do this safely, because it is eventually consistent and has
+// no compare-and-swap. A Durable Object runs one event at a time and its synchronous
+// storage calls never yield, so each method below reads and writes in one
+// uninterruptible step.
 export class OneTimeStore extends DurableObject {
   async put(key: string, value: string, ttlMs: number): Promise<void> {
     const expiresAt = Date.now() + ttlMs;
@@ -21,12 +30,50 @@ export class OneTimeStore extends DurableObject {
 
   // Returns the value once, then null. An expired entry is deleted and never returned.
   consume(key: string): string | null {
-    const entry = this.ctx.storage.kv.get<Entry>(key);
+    const entry = this.live(key);
+    if (entry !== undefined) {
+      this.ctx.storage.kv.delete(key);
+    }
+    return entry?.value ?? null;
+  }
+
+  // Reads a live entry without using it up, and says whether it is leased right now.
+  peek(key: string): PeekResult | null {
+    const entry = this.live(key);
     if (entry === undefined) {
       return null;
     }
-    this.ctx.storage.kv.delete(key);
-    return entry.expiresAt > Date.now() ? entry.value : null;
+    return { value: entry.value, leased: (entry.leaseUntil ?? 0) > Date.now() };
+  }
+
+  // Takes an exclusive lease for `leaseMs` and returns the value, or null when the entry
+  // is gone, expired or already leased. A lease that runs out frees itself, so a caller
+  // that crashed mid-way can't lock the entry forever.
+  claim(key: string, leaseMs: number): string | null {
+    const entry = this.live(key);
+    if (entry === undefined || (entry.leaseUntil ?? 0) > Date.now()) {
+      return null;
+    }
+    this.ctx.storage.kv.put<Entry>(key, { ...entry, leaseUntil: Date.now() + leaseMs });
+    return entry.value;
+  }
+
+  // Replaces a live entry's value, keeping its expiry and any lease. False when gone.
+  update(key: string, value: string): boolean {
+    const entry = this.live(key);
+    if (entry === undefined) {
+      return false;
+    }
+    this.ctx.storage.kv.put<Entry>(key, { ...entry, value });
+    return true;
+  }
+
+  // Ends a lease early so the next `claim` can proceed.
+  release(key: string): void {
+    const entry = this.live(key);
+    if (entry !== undefined) {
+      this.ctx.storage.kv.put<Entry>(key, { value: entry.value, expiresAt: entry.expiresAt });
+    }
   }
 
   // Sweeps expired entries so abandoned ones don't pile up, then re-arms for the next.
@@ -43,5 +90,18 @@ export class OneTimeStore extends DurableObject {
     if (next !== undefined) {
       await this.ctx.storage.setAlarm(next);
     }
+  }
+
+  // The entry if it exists and hasn't expired; an expired one is deleted on sight.
+  private live(key: string): Entry | undefined {
+    const entry = this.ctx.storage.kv.get<Entry>(key);
+    if (entry === undefined) {
+      return undefined;
+    }
+    if (entry.expiresAt <= Date.now()) {
+      this.ctx.storage.kv.delete(key);
+      return undefined;
+    }
+    return entry;
   }
 }
