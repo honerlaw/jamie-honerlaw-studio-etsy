@@ -27,7 +27,7 @@
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@eslint/js": "10.0.1",
     "@onerlaw/agentic-eslint-plugin": "0.2.0",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "@vitest/coverage-istanbul": "5.1.0",
     "eslint": "10.14.0",
     "eslint-import-resolver-typescript": "4.4.5",
