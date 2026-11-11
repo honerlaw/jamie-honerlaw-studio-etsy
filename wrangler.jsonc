@@ -1,6 +1,6 @@
 // Cloudflare Workers configuration, read by the build gate (`wrangler deploy --dry-run`),
 // the Workers test project and `wrangler types` (rerun `npm run gen:worker-types` after
-// any change here). Phase 3 adds the R2 bucket and the cron trigger.
+// any change here).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "etsy-shop-mcp",
@@ -18,6 +18,11 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["EtsyTokenVault", "OneTimeStore"] }],
   // No ids: `wrangler deploy` provisions both namespaces on first deploy.
   "kv_namespaces": [{ "binding": "OAUTH_KV" }, { "binding": "SHOP_KV" }],
+  // Staged photo uploads under uploads/<nonce>/. README: create the bucket and its
+  // one-day lifecycle rule before the first deploy that includes it.
+  "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "etsy-shop-uploads" }],
+  // The daily views snapshot (and Etsy token refresh), 06:17 UTC.
+  "triggers": { "crons": ["17 6 * * *"] },
   "vars": {
     // "true" only while looking up her Etsy ids for the allowlist. Never grants access.
     "ALLOWLIST_BOOTSTRAP": "false",
@@ -32,6 +37,8 @@
       "TOKEN_ENC_KID",
       // The complete list of MCP client apps allowed to connect (README: "MCP clients").
       "MCP_CLIENTS",
+      // HMAC key for photo upload links (32+ random bytes, base64).
+      "UPLOAD_SIGNING_KEY",
     ],
   },
 }

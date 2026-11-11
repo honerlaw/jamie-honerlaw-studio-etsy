@@ -1,4 +1,5 @@
 import { handleRequest } from "./auth/handle-request";
+import { runDailySnapshot } from "./cron/run-daily-snapshot";
 
 export { OneTimeStore } from "./storage/one-time-store";
 export { EtsyTokenVault } from "./vault/etsy-token-vault";
@@ -8,5 +9,8 @@ export { EtsyTokenVault } from "./vault/etsy-token-vault";
 export default {
   fetch(request, env, ctx) {
     return handleRequest(request, env, ctx);
+  },
+  scheduled(_controller, env, ctx) {
+    ctx.waitUntil(runDailySnapshot(env));
   },
 } satisfies ExportedHandler<Env>;

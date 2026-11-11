@@ -1,6 +1,6 @@
 import createClient, { type Client } from "openapi-fetch";
 
-import { fetchWithRetry } from "./fetch-with-retry";
+import { fetchWithRetry, type SubrequestBudget } from "./fetch-with-retry";
 import type { paths } from "./generated/schema";
 
 export type EtsyClient = Client<paths>;
@@ -10,6 +10,8 @@ export interface EtsyClientOptions {
   readonly accessToken: string;
   readonly fetch: typeof fetch;
   readonly sleep: (ms: number) => Promise<void>;
+  // Shared by every client in one invocation (see SubrequestBudget).
+  readonly budget?: SubrequestBudget;
 }
 
 // A client typed from the committed spec snapshot. Every request carries the
@@ -17,7 +19,7 @@ export interface EtsyClientOptions {
 export function createEtsyClient(options: EtsyClientOptions): EtsyClient {
   return createClient<paths>({
     baseUrl: "https://api.etsy.com",
-    fetch: fetchWithRetry(options.fetch, options.sleep),
+    fetch: fetchWithRetry(options.fetch, options.sleep, options.budget),
     headers: { "x-api-key": options.apiKey, authorization: `Bearer ${options.accessToken}` },
   });
 }

@@ -15,6 +15,9 @@ ALLOWED_ETSY_SHOP_ID=unset
 TOKEN_ENC_KEYS={"k1":"replace-with-openssl-rand-base64-32"}
 TOKEN_ENC_KID=k1
 
+# Signs photo upload links. Generate with: openssl rand -base64 32
+UPLOAD_SIGNING_KEY=replace-with-openssl-rand-base64-32
+
 # The apps allowed to connect: a JSON list on one line (README: "MCP clients").
 # Make each secret with: openssl rand -base64 32
 MCP_CLIENTS=[{"id":"claude","name":"Claude","secret":"replace-with-openssl-rand-base64-32","redirectUris":["https://claude.ai/api/mcp/auth_callback","https://claude.com/api/mcp/auth_callback"]}]

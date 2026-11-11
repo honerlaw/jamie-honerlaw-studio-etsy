@@ -4,7 +4,7 @@ This guide is for the shop owner. It explains how to connect an AI assistant to 
 
 ## What it is
 
-A small private server connects your AI assistant to your Etsy shop. Once it's connected, you can ask things like "how's my shop doing?" in a normal chat. More abilities arrive in the next update: managing listings and photos, orders and shipping, prices and stock, and sales numbers.
+A small private server connects your AI assistant to your Etsy shop. Once it's connected, you can manage listings and photos, prices and stock, and orders and shipping, and see your sales numbers, all in a normal chat.
 
 **Only your Etsy account can use it.** The server checks your Etsy user and shop every time someone connects, and refuses everyone else.
 
@@ -46,6 +46,35 @@ ChatGPT's support for custom connectors depends on your plan, and so does whethe
 
 Etsy sign-ins last up to 90 days without use. If one lapses, the assistant tells you to reconnect. Open the connector's settings in the app and connect again.
 
-## What you can ask today
+## What you can ask
 
-- **"Give me an overview of my shop."** Your shop's name, active listings, total sales, reviews and whether vacation mode is on. It also shows when Etsy last refreshed your sign-in and when the daily stats snapshot last ran (that snapshot starts with the next update).
+Talk to it the way you'd talk to an assistant. Some examples:
+
+- **Your shop:** "Give me an overview of my shop." "What shipping profiles do I have?"
+- **Listings:** "Show my drafts." "Make a draft listing for a blue ceramic mug, $24.50, three in stock." "Change the mug's title to …" "Add tags: gift, coffee."
+- **Photos:** "Add photos to the blue mug." You get a private link (it works for 30 minutes, just for that listing). Open it on your phone, pick or take up to 10 photos, put them in order, tap **Upload**, then tell the assistant you're done. The new photos go after the ones the listing already has. If adding them stops partway, just ask the assistant to try again. Photos that already went through are never added twice.
+- **Prices and stock:** "Raise the large size to $30." "I have 5 more green ones." Only what you mention changes.
+- **Orders:** "What do I need to ship?" "Show order 1234 with the address." Orders show the buyer's name and country; the address appears only when you ask for it.
+- **Numbers:** "How were sales last month?" "Which listings got the most views this week?" "Show my latest reviews."
+
+### Things it checks with you first
+
+Publishing, renewing, deactivating or deleting a listing, removing a photo, and marking an order shipped all cost money or can't be undone. For those, the assistant first shows you exactly what will happen (including Etsy's listing fee, currently $0.20, when there is one) and asks. Nothing changes until you say yes. Everything else, like editing a draft or changing a price, happens straight away.
+
+## What the numbers can't show
+
+Etsy doesn't share everything its Stats page shows. Through this connection there are **no visits, no search terms and no conversion rate**. What you do get:
+
+- **Views:** each listing's lifetime views, which Etsy updates once a day. The server saves them every morning, so "views this week" works once it has a few days of history.
+- **Favorites** per listing, **reviews**, and **sales**: item sales (after coupons, without tax or shipping), shipping and refunds, number of orders and best sellers for any date range. Etsy's fees aren't taken off, so this is what buyers paid her, not what she kept.
+
+## First run checklist
+
+After setting it up, try each of these once and note anything that doesn't work:
+
+1. Make a draft listing.
+2. Add two photos to it through the upload link.
+3. Change one price on an existing listing.
+4. Publish the draft (it asks you to confirm first).
+5. Ask what you need to ship today.
+6. The next day, ask for the shop overview and check that the daily snapshot ran.

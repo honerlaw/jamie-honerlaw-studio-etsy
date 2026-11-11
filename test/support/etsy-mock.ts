@@ -12,6 +12,10 @@ interface RecordedRequest {
 export interface EtsyMock {
   // Every request the Worker sent to Etsy, in order.
   readonly requests: RecordedRequest[];
+  // The requests that change something (anything but GET).
+  readonly writes: () => RecordedRequest[];
+  // The GET requests.
+  readonly reads: () => RecordedRequest[];
   // Override one route's response. Keyed by "METHOD path", e.g. "GET /v3/application/users/me".
   readonly routes: Map<string, () => Response | Promise<Response>>;
 }
@@ -70,5 +74,10 @@ export function mockEtsy(): EtsyMock {
     const route = routes.get(`${request.method} ${url.pathname}`);
     return route === undefined ? new Response("not mocked", { status: 500 }) : route();
   });
-  return { requests, routes };
+  return {
+    requests,
+    routes,
+    writes: () => requests.filter((request) => request.method !== "GET" && !request.url.includes("/oauth/")),
+    reads: () => requests.filter((request) => request.method === "GET"),
+  };
 }

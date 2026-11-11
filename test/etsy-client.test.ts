@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createEtsyClient } from "../src/etsy/create-etsy-client";
 import { describeEtsyStatus } from "../src/etsy/describe-etsy-status";
+import { ETSY_SUBREQUESTS, etsySubrequestBudget } from "../src/etsy/etsy-subrequest-budget";
 import { fetchEtsyMe } from "../src/etsy/fetch-etsy-me";
 import { fetchWithRetry } from "../src/etsy/fetch-with-retry";
 import { requestEtsyToken } from "../src/etsy/request-etsy-token";
@@ -44,6 +45,23 @@ describe("fetchWithRetry", () => {
     })(new Request("https://api.etsy.com/x"));
     expect(response.status).toBe(200);
     expect(waits).toStrictEqual([10_000, 1000]);
+  });
+});
+
+describe("the subrequest budget", () => {
+  it("counts retries, then answers 429 without sending anything", async () => {
+    const { fetcher, calls } = sequence(() => new Response(null, { status: 429 }));
+    const send = fetchWithRetry(fetcher, () => Promise.resolve(), etsySubrequestBudget(2));
+    expect((await send(new Request("https://api.etsy.com/x"))).status).toBe(429);
+    expect(calls).toHaveLength(2);
+    const spent = await send(new Request("https://api.etsy.com/y"));
+    expect(spent.statusText).toBe("Subrequest budget spent");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("allows 45 Etsy requests per invocation by default", () => {
+    const budget = etsySubrequestBudget();
+    expect(Array.from({ length: ETSY_SUBREQUESTS + 1 }, () => budget.take()).filter(Boolean)).toHaveLength(45);
   });
 });
 
