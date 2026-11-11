@@ -98,6 +98,26 @@ describe("photo positions on Etsy", () => {
 });
 
 describe("no photo lands on Etsy twice", () => {
+  it("keeps appending in order on a retry after a partial run", async () => {
+    let onEtsy = [image(1), image(2)];
+    etsy.routes.set(LISTING_ROUTE, () => Response.json(listing({ images: onEtsy })));
+    await stage(3);
+    let calls = 0;
+    etsy.routes.set(IMAGES_ROUTE, () => {
+      calls += 1;
+      if (calls === 2) {
+        return new Response(null, { status: 503 });
+      }
+      nextImageId += 1;
+      onEtsy = [...onEtsy, image(nextImageId)];
+      return Response.json({ listing_image_id: nextImageId });
+    });
+    expect((await attachUploadedPhotos(toolDeps(), { listing_id: 555 })).isError).toBe(true);
+    await attachUploadedPhotos(toolDeps(), { listing_id: 555 });
+    expect(sentMarkers()).toStrictEqual(["IMG-0", "IMG-1", "IMG-1", "IMG-2"]);
+    expect(sentRanks()).toStrictEqual(["3", "4", "4", "5"]);
+  });
+
   it("skips a staged photo already recorded as uploaded, and deletes its staged copy", async () => {
     const { nonce } = await stage(2);
     await markUploaded(nonce, 0);

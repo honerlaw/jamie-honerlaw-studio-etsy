@@ -7,6 +7,8 @@ interface Entry {
   readonly leaseUntil?: number;
   // Identifies that lease, so only its holder can update, finish or release the entry.
   readonly leaseId?: string;
+  // The lease's length, renewed on each update by its holder.
+  readonly leaseMs?: number;
 }
 
 // What `peek` reports about a live entry.
@@ -63,19 +65,20 @@ export class OneTimeStore extends DurableObject {
       return null;
     }
     const lease = crypto.randomUUID();
-    this.ctx.storage.kv.put<Entry>(key, { ...entry, leaseUntil: Date.now() + leaseMs, leaseId: lease });
+    this.ctx.storage.kv.put<Entry>(key, { ...entry, leaseUntil: Date.now() + leaseMs, leaseId: lease, leaseMs });
     return { value: entry.value, lease };
   }
 
-  // Replaces the value, keeping its expiry and lease, but only for the lease's holder.
-  // False when the entry is gone or was replaced or re-claimed since (a `put` drops the
-  // lease), so a slow holder can't overwrite a newer entry.
+  // Replaces the value, keeping its expiry, but only for the lease's holder, and renews
+  // the lease so a long run that keeps making progress keeps it. False when the entry is
+  // gone or was replaced or re-claimed since (a `put` drops the lease), so a slow holder
+  // can't overwrite a newer entry.
   update(key: string, lease: string, value: string): boolean {
     const entry = this.held(key, lease);
     if (entry === undefined) {
       return false;
     }
-    this.ctx.storage.kv.put<Entry>(key, { ...entry, value });
+    this.ctx.storage.kv.put<Entry>(key, { ...entry, value, leaseUntil: Date.now() + (entry.leaseMs ?? 0) });
     return true;
   }
 

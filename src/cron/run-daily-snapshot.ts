@@ -62,6 +62,11 @@ async function snapshot(env: Env, now: number): Promise<CronStatus> {
   if (!pages.ok) {
     return { ranAt, ok: false, error: `Etsy answered HTTP ${String(pages.response.status)}.` };
   }
+  // A read cut short by rate limiting holds an arbitrary subset; saved, it would look
+  // like a drop in views the next day. The page cap stops at the same place daily.
+  if (pages.rateLimited) {
+    return { ranAt, ok: false, error: "Etsy kept rate limiting, so no snapshot was saved today." };
+  }
   const views = Object.fromEntries(pages.items.map((listing) => [String(listing.listing_id), listing.views ?? 0]));
   await env.SHOP_KV.put(`views:${ranAt.slice(0, 10)}`, JSON.stringify(views), {
     expirationTtl: SNAPSHOT_TTL_SECONDS,

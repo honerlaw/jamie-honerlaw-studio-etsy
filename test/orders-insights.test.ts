@@ -191,6 +191,16 @@ describe("get_sales_summary", () => {
     expect(etsy.reads()).toHaveLength(30);
   });
 
+  it("says so when Etsy rate limits part-way, counting only what it read", async () => {
+    const pages = receiptsOf(500);
+    etsy.routes.set(RECEIPTS, () => (etsy.reads().length > 2 ? new Response(null, { status: 429 }) : pages()));
+    const summary = resultJson<Record<string, unknown>>(
+      await getSalesSummary(toolDeps(), { from: "2026-01-01", to: "2026-11-10" }),
+    );
+    expect(summary["orders"]).toBe(200);
+    expect(summary["truncated"]).toContain("rate limiting after the newest 200 orders");
+  });
+
   it("refuses a backwards range and reports Etsy failures", async () => {
     expect((await getSalesSummary(toolDeps(), { from: "2026-11-10", to: "2026-11-01" })).isError).toBe(true);
     etsy.routes.set(RECEIPTS, () => new Response(null, { status: 503 }));

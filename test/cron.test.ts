@@ -58,12 +58,15 @@ describe("the daily snapshot", () => {
     expect(await lastRun()).toMatchObject({ ok: true, listings: 3500, truncated: true });
   });
 
-  it("keeps the pages it read when Etsy keeps rate limiting, and says it was truncated", async () => {
+  it("saves no partial snapshot when Etsy keeps rate limiting part-way", async () => {
     const pages = activeListings(500);
     etsy.routes.set(LISTINGS, () => (etsy.reads().length > 2 ? new Response(null, { status: 429 }) : pages()));
     await runDailySnapshot(env, NOW);
-    expect(await lastRun()).toMatchObject({ ok: true, listings: 200, truncated: true });
-    expect(await env.SHOP_KV.get("views:2026-11-10")).not.toBeNull();
+    expect(await lastRun()).toMatchObject({
+      ok: false,
+      error: "Etsy kept rate limiting, so no snapshot was saved today.",
+    });
+    expect(await env.SHOP_KV.get("views:2026-11-10")).toBeNull();
   });
 
   it.each([

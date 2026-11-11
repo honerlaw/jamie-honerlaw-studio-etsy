@@ -83,6 +83,15 @@ describe("OneTimeStore leases (upload sessions)", () => {
     expect(await stub().peek("s")).toBeNull();
   });
 
+  it("renews the lease each time its holder makes progress", async () => {
+    await stub().put("long", "v", 60_000);
+    const held = await stub().claim("long", 300);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(await stub().peek("long")).toMatchObject({ leased: false });
+    expect(await stub().update("long", held?.lease ?? "", "v2")).toBe(true);
+    expect(await stub().peek("long")).toStrictEqual({ value: "v2", leased: true });
+  });
+
   it("refuses a holder whose entry was replaced by a put", async () => {
     await stub().put("r", "old", 60_000);
     const held = await stub().claim("r", 60_000);

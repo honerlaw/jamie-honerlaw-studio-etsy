@@ -4,7 +4,13 @@ export type PageResult<T> =
   | { readonly ok: false; readonly response: Response };
 
 export type PagesResult<T> =
-  | { readonly ok: true; readonly items: readonly T[]; readonly truncated: boolean }
+  | {
+      readonly ok: true;
+      readonly items: readonly T[];
+      readonly truncated: boolean;
+      // True when a 429 (not the page cap) cut it short, so the set is arbitrary.
+      readonly rateLimited: boolean;
+    }
   | { readonly ok: false; readonly response: Response };
 
 // Reads pages of `pageSize` until Etsy has no more, `maxItems` are collected, or
@@ -22,15 +28,20 @@ export async function fetchPages<T>(
     const result = await fetchPage(page * options.pageSize, options.pageSize);
     if (!result.ok) {
       return page > 0 && result.response.status === 429
-        ? { ok: true, items: items.slice(0, maxItems), truncated: true }
+        ? { ok: true, items: items.slice(0, maxItems), truncated: true, rateLimited: true }
         : result;
     }
     items.push(...result.results);
     const exhausted = result.results.length < options.pageSize || items.length >= result.count;
     if (exhausted || items.length >= maxItems) {
       // Truncated when Etsy has more than was returned: pages left, or items cut by maxItems.
-      return { ok: true, items: items.slice(0, maxItems), truncated: !exhausted || items.length > maxItems };
+      return {
+        ok: true,
+        items: items.slice(0, maxItems),
+        truncated: !exhausted || items.length > maxItems,
+        rateLimited: false,
+      };
     }
   }
-  return { ok: true, items: items.slice(0, maxItems), truncated: true };
+  return { ok: true, items: items.slice(0, maxItems), truncated: true, rateLimited: false };
 }

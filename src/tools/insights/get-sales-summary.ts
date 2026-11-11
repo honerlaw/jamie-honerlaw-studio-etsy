@@ -33,6 +33,13 @@ function rounded(totals: Map<string, number>): Record<string, number> {
   return Object.fromEntries([...totals].map(([currency, amount]) => [currency, round(amount)]));
 }
 
+// Why the totals are partial: the page cap, or Etsy rate limiting part-way.
+function truncation(rateLimited: boolean, read: number): string {
+  return rateLimited
+    ? `Etsy kept rate limiting after the newest ${read.toLocaleString("en-US")} orders; the totals cover only those. Try again shortly.`
+    : `Stopped at the newest ${read.toLocaleString("en-US")} orders; the totals miss older ones.`;
+}
+
 interface Tally {
   title: string;
   quantity: number;
@@ -101,7 +108,7 @@ export async function getSalesSummary(
       refunded: rounded(refunded),
       fully_refunded_orders: parsed.data.length - orders.length,
       top_listings: top,
-      ...(pages.truncated ? { truncated: "Stopped at the newest 3,000 orders; the totals miss older ones." } : {}),
+      ...(pages.truncated ? { truncated: truncation(pages.rateLimited, parsed.data.length) } : {}),
       note: METRICS_NOTE,
     });
   });
