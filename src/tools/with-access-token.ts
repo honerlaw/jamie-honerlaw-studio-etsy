@@ -1,15 +1,32 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
+import { logEvent } from "../log/log-event";
 import type { ShopToolDeps } from "./shop-tool-deps";
 import { toolText } from "./tool-text";
 
 const RECONNECT_MESSAGE = "Etsy connection expired — open the connector settings and reconnect.";
 const UNAVAILABLE_MESSAGE = "Etsy can't be reached right now. Try again in a minute.";
+const FAILURE_MESSAGE =
+  "Something went wrong on the shop server. Try again, and check the server logs if it keeps happening.";
 
 // Runs `work` with a live Etsy access token. If the connection is gone for good (Etsy
 // refused the refresh token, or nothing is stored) her MCP grants are revoked, so the
-// client's next call gets a 401 and walks her through connecting again.
+// client's next call gets a 401 and walks her through connecting again. An unexpected
+// error becomes a fixed message: the MCP SDK would otherwise echo `error.message` (which
+// can quote a secret or an Etsy response) into the chat.
 export async function withAccessToken(
+  deps: ShopToolDeps,
+  work: (accessToken: string) => Promise<CallToolResult>,
+): Promise<CallToolResult> {
+  try {
+    return await runWithToken(deps, work);
+  } catch {
+    logEvent("tool_failed", { reason: "unexpected_error" });
+    return toolText(FAILURE_MESSAGE, true);
+  }
+}
+
+async function runWithToken(
   deps: ShopToolDeps,
   work: (accessToken: string) => Promise<CallToolResult>,
 ): Promise<CallToolResult> {

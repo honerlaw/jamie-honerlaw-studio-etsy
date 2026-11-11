@@ -10,28 +10,33 @@ A small private server connects your AI assistant to your Etsy shop. Once it's c
 
 ## Connecting
 
-You connect each app once. Each connection opens a sign-in in your browser:
+You connect each app once. You need three things from whoever set up the server:
 
-1. A page names the app that wants to connect and where its access goes. Press **Continue to Etsy** only if you just started connecting from that app.
-2. Etsy asks you to sign in and allow access. Allow it.
-3. You land back in the app, connected.
+- the server's address, which ends in `/mcp` (for example `https://etsy-shop-mcp.<your-name>.workers.dev/mcp`);
+- that app's **client ID** (for example `claude`);
+- that app's **client secret**, a long random string. Treat it like a password.
 
-You need the server's address, which ends in `/mcp` (for example `https://etsy-shop-mcp.<your-name>.workers.dev/mcp`).
+Only apps that were set up on the server can connect, and the server has no sign-up. Connecting opens a sign-in in your browser:
+
+1. Etsy asks you to sign in and allow access. Allow it.
+2. You land back in the app, connected.
 
 ### Claude (web, desktop and phone)
 
 1. On claude.ai, open **Settings → Connectors** and choose **Add custom connector**.
-2. Name it "Etsy shop", paste the `/mcp` address, and add it.
-3. Press **Connect** and follow the sign-in above.
-4. In a chat, turn the connector on from the tools menu.
+2. Name it "Etsy shop" and paste the `/mcp` address.
+3. Open **Advanced settings** and enter the Claude **OAuth Client ID** and **OAuth Client Secret**. Then add the connector.
+4. Press **Connect** and follow the sign-in above.
+5. In a chat, turn the connector on from the tools menu.
 
 A connector added on the web also works in the Claude phone app.
 
 ### ChatGPT
 
 1. On chatgpt.com, open **Settings → Apps & Connectors**. Custom connectors may need **Developer mode** turned on under **Advanced**.
-2. Create a connector, paste the `/mcp` address, choose **OAuth** for authentication, and save.
-3. Follow the sign-in above.
+2. Create a connector, paste the `/mcp` address and choose **OAuth** for authentication.
+3. Under the OAuth settings, enter the ChatGPT client ID and client secret yourself. ChatGPT calls this a user-defined OAuth client. If ChatGPT shows a callback URL other than `https://chatgpt.com/connector_platform_oauth_redirect`, send it to whoever set up the server, who must add it first.
+4. Save, then follow the sign-in above.
 
 ChatGPT's support for custom connectors depends on your plan, and so does whether they can make changes and whether they work in the phone app. OpenAI's own pages disagree. **Claude is the app that's sure to work**, including on your phone.
 

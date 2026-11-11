@@ -85,7 +85,13 @@ export async function handleCallback(request: Request, env: Env, oauth: OAuthHel
     return failure(403, "This Etsy account isn't allowed to use this server.", headers);
   }
 
-  await env.ETSY_TOKEN_VAULT.getByName(allowedShop).store(exchanged.tokens);
+  try {
+    await env.ETSY_TOKEN_VAULT.getByName(allowedShop).store(exchanged.tokens);
+  } catch {
+    // Never echo the error: a bad TOKEN_ENC_KEYS secret is the likely cause.
+    logEvent("vault_store_failed");
+    return failure(500, "The server couldn't save the Etsy connection (check its secrets).", headers);
+  }
   const { redirectTo } = await oauth.completeAuthorization({
     request: authRequest,
     userId: me.userId,

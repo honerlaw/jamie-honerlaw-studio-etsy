@@ -1,9 +1,7 @@
 import { AuthorizationError, type OAuthHelpers } from "@cloudflare/workers-oauth-provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { allowedRedirectUris } from "../src/auth/allowed-redirect-uris";
 import { authorizationFailure } from "../src/auth/authorization-failure";
-import { checkClientRegistration } from "../src/auth/check-client-registration";
 import { readCookie } from "../src/auth/read-cookie";
 import { revokeUserGrants } from "../src/auth/revoke-user-grants";
 import { logEvent } from "../src/log/log-event";
@@ -11,20 +9,6 @@ import { escapeHtml } from "../src/pages/escape-html";
 import { htmlPage } from "../src/pages/html-page";
 import { withAccessToken } from "../src/tools/with-access-token";
 import type { ShopToolDeps } from "../src/tools/shop-tool-deps";
-
-describe("allowedRedirectUris", () => {
-  it("adds trimmed, non-empty extras to the built-in client callbacks", () => {
-    const uris = allowedRedirectUris(" https://a.example/cb , ,https://b.example/cb");
-    expect(uris).toContain("https://chatgpt.com/connector_platform_oauth_redirect");
-    expect(uris.slice(-2)).toStrictEqual(["https://a.example/cb", "https://b.example/cb"]);
-    expect(checkClientRegistration({ redirect_uris: ["https://a.example/cb"] }, uris)).toBeUndefined();
-  });
-
-  it("rejects registrations whose redirect_uris aren't a list of strings", () => {
-    expect(checkClientRegistration({ redirect_uris: "https://claude.ai/api/mcp/auth_callback" }, [])).toBeDefined();
-    expect(checkClientRegistration({ redirect_uris: [42] }, ["42"])).toBeDefined();
-  });
-});
 
 describe("readCookie", () => {
   it("matches the exact name, not a prefix or a value substring", () => {
@@ -97,6 +81,15 @@ describe("withAccessToken", () => {
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain("Try again");
     expect(d.revoked).toBe(0);
+  });
+
+  it("turns an unexpected error into a fixed message that quotes nothing", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const d = { ...deps("reconnect"), getAccessToken: () => Promise.reject(new Error("secret-ish detail")) };
+    const result = await withAccessToken(d, () => Promise.reject(new Error("not reached")));
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).not.toContain("secret-ish");
+    expect(spy).toHaveBeenCalledWith('{"event":"tool_failed","reason":"unexpected_error"}');
   });
 
   it("revokes the grants when the connection is gone for good", async () => {

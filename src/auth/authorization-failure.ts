@@ -3,7 +3,7 @@ import { AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-pr
 import { escapeHtml } from "../pages/escape-html";
 import { htmlPage } from "../pages/html-page";
 
-// Maps a consent-helper failure to a response, per the library's guidance: redirect to
+// Maps an authorization-request failure to a response, per the library's guidance: redirect to
 // the client only when the library has validated where to; otherwise render locally.
 // Anything else is a bug or an outage and is rethrown (a 500).
 export function authorizationFailure(error: unknown): Response {

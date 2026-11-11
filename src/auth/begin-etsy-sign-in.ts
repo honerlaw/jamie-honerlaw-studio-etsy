@@ -7,12 +7,12 @@ import { oneTimeStoreStub } from "./one-time-store-stub";
 export const STATE_COOKIE = "__Host-etsy-oauth-state";
 const STATE_TTL_SECONDS = 600;
 
-// After she approves the MCP client: creates the Etsy `state` and PKCE verifier, stores
-// them with the approved request in the OneTimeStore (single use, ten minutes), binds the
-// state to this browser with a cookie, and redirects to Etsy's consent screen.
+// Once the provider has validated an authorization request from one of her apps: creates
+// the Etsy `state` and PKCE verifier, stores them with the request in the OneTimeStore
+// (single use, ten minutes), binds the state to this browser with a cookie, and
+// redirects to Etsy's consent screen.
 export async function beginEtsySignIn(
   approved: AuthRequest,
-  headers: Headers,
   env: Pick<Env, "ONE_TIME_STORE" | "ETSY_KEYSTRING">,
   origin: string,
 ): Promise<Response> {
@@ -36,6 +36,7 @@ export async function beginEtsySignIn(
     code_challenge: challenge,
     code_challenge_method: "S256",
   }).toString();
+  const headers = new Headers();
   headers.append(
     "set-cookie",
     `${STATE_COOKIE}=${state}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${String(STATE_TTL_SECONDS)}`,

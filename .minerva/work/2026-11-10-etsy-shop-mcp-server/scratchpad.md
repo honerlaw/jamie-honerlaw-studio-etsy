@@ -23,6 +23,11 @@
 - [reviewed — clean] completion verification (phase 1): Verifier reproduced the full gate chain (all exit 0, 15 tests, 100% coverage) and accepted criteria 1–3 and 6. Criteria 4 (ci-pass green on PR) and 5 (ruleset applied) were judged legitimately deferred to ship. Ship to-dos: enable allow_auto_merge + delete_branch_on_merge, apply and verify the ruleset, confirm ci-pass green (tier: reviewer floor — no interface beyond what the proposal approved)
 - [solo] review triage (phase 1): 13 FIX / 1 SUGGEST / 0 IGNORE (tier: default-solo row — every finding had a writable failure scenario and an absorbable fix; none had two defensible dispositions)
 - [solo] MCP transport (phase 2): use the MCP SDK's stateless `WebStandardStreamableHTTPServerTransport` instead of `agents`' `McpAgent` (tier: solo — internal component swap behind the same `/mcp` Streamable HTTP contract; reversible; no success criterion depends on it; the `agents` 0.33 docs themselves steer new stateless servers away from McpAgent; drops a heavy dependency and a Durable Object class)
+- [reviewed — revise, no unmet criterion] completion verification (phase 2): Verifier reproduced all gates (142 tests) and judged criteria 1–11 honestly met; its `revise` named one gap outside the checklist: the README's first deploy would fail because `secrets.required` makes wrangler refuse a new Worker without secrets → fixed as a review FIX (first deploy now uses `--secrets-file .dev.vars` in bootstrap mode), not a replan, since no success criterion is unmet (tier: reviewer floor — no interface beyond what the proposal approved: the MCP transport swap keeps the `/mcp` contract, and the scope set follows the approved derivation rule)
+- [user-directed] review finding #1 (phishing via shared Claude/ChatGPT callbacks: anyone can register a client with those redirect URIs and phish a grant): Skeptic showed a passphrase or rate limit doesn't stop it; escalated as replan-vs-FIX; user: "we should have a [list] of some sort that we control who can login entirely" → replan (escalation 1)
+- [user-directed] review finding #5 (unauthenticated DCR can exhaust the Free-plan KV write quota): user: "this is not a public app that other people can consume... there doesn't need to be signup / consent" → folded into the same replan
+- [user-directed] new-plan acceptance (replan 2026-11-10): closed `MCP_CLIENTS` list of confidential clients, no DCR, no consent page; the user's answer is applied as the panel's accept (round-table escalation rule)
+- [solo] client provisioning: write a minimal base record only when `lookupClient` is null, then set name/redirects/secret through the library's public `updateClient` (it hashes the secret), re-synced only when an entry's fingerprint changes (tier: solo — internal to the approved replan; test/clients.test.ts runs the full flow against the pinned library, so a record-shape change fails CI)
 
 ## Work notes — Phase 2 (2026-11-10)
 - **MCP transport:** `@modelcontextprotocol/sdk` 1.32.2 `WebStandardStreamableHTTPServerTransport` in stateless JSON mode, with a fresh `McpServer` per request. No `agents` dependency, and no McpAgent DO.
@@ -49,7 +54,7 @@
   - `wrangler types --strict-vars=false`: with literal var types, `ALLOWLIST_BOOTSTRAP === "true"` wouldn't typecheck.
   - `secrets.required` in wrangler.jsonc makes secret types deterministic.
   - `import-x/no-unresolved` ignores `@modelcontextprotocol/sdk/*.js`. The SDK's `./*` exports wildcard maps types to `*.js.d.ts`, which the resolver can't follow; tsc and the build gate still resolve those imports.
-- **Deferred to Phase 3 (where first used):** `OneTimeStore.claim` (upload lease), R2 and cron.
+- **Deferred to Phase 3 (where first used):** `OneTimeStore.claim` (upload lease), R2, cron, and the Etsy client's price conversion between `{amount, divisor}` and decimals. The proposal lists the conversion under the Phase 2 Etsy client, but only Phase 3 tools use it, knip rejects unused code, and its round-trip test is a Phase 3 criterion.
 
 - `@cloudflare/vitest-pool-workers` is deprecated, renamed to `@cloudflare/vitest-plugin` (1.7.0). It is a Vite plugin `cloudflareTest({ wrangler: { configPath } })` used inside a vitest project, and it supports vitest 5. Switched; the proposal's name is stale.
 - `wrangler types` now generates runtime types (`worker-configuration.d.ts`, ~16k lines, committed) and supersedes `@cloudflare/workers-types`, which is removed. `exports.default.fetch()` from `cloudflare:workers` is only typed with it (`Cloudflare.GlobalProps.mainModule`). CI checks freshness with `wrangler types --check`, folded into the `generated-types-match` job alongside the Etsy types check. The proposal named that job `etsy-types-match-snapshot`.
@@ -78,6 +83,15 @@ Independent diff review, 14 findings:
 12. FIX: `tests/check-scripts.test.ts` proves both check scripts can fail. The coverage floor now fails closed on non-numeric pct and on an empty summary.
 13. SUGGEST: `allowScripts` pins exact esbuild/workerd versions, so a Dependabot wrangler bump may pull a new workerd whose postinstall isn't approved. Check it on the first Dependabot PR.
 14. FIX (preemptive): gitleaks-action replaced by the pinned, checksum-verified gitleaks CLI (v8.30.1), which needs no extra token scopes.
+
+## Review triage 2026-11-10 (phase 2)
+Independent diff review plus the Verifier's gap, 6 findings:
+1. REPLAN (high, user-directed): open DCR accepting Claude's/ChatGPT's shared callbacks lets anyone register a client and phish a grant. Replaced by the closed `MCP_CLIENTS` list (replan.md 2026-11-10).
+2. FIX: deploy.yml could deploy a stale commit when CI runs finish out of order. It now deploys only when the CI head sha is still the tip of main.
+3. FIX: the Cloudflare token was job-wide env. It is now scoped to the deploy step alone, and checkout uses `persist-credentials: false`.
+4. FIX: key-ring parse errors and an unexpected tool error could echo secret material. They now use fixed messages, plus `tool_failed` / `vault_store_failed` log events with no detail.
+5. REPLAN (user-directed): unauthenticated `/register` could exhaust the Free-plan KV write quota. It's gone with registration.
+6. FIX (Verifier): the README first deploy would fail under `secrets.required`. It now uses `--secrets-file .dev.vars` in bootstrap mode, and `.dev.vars.example` defaults the allowlist to `unset`.
 
 ## Mode B promotions (phase 1)
 - import-x resolver/parsers constraint → promoted to .minerva/knowledge/2026-11-10-constraint-import-x-needs-typescript-resolver-and-parsers.md

@@ -1,4 +1,4 @@
-import { buildProvider } from "./auth/build-provider";
+import { handleRequest } from "./auth/handle-request";
 
 export { OneTimeStore } from "./storage/one-time-store";
 export { EtsyTokenVault } from "./vault/etsy-token-vault";
@@ -7,6 +7,6 @@ export { EtsyTokenVault } from "./vault/etsy-token-vault";
 // eslint.config.ts). The Durable Object classes must be exported from here too.
 export default {
   fetch(request, env, ctx) {
-    return buildProvider(env, new URL(request.url).origin).fetch(request, env, ctx);
+    return handleRequest(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;

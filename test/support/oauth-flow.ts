@@ -2,9 +2,16 @@ import { exports } from "cloudflare:workers";
 
 export const ORIGIN = "https://mcp.example.com";
 export const CLAUDE_REDIRECT = "https://claude.ai/api/mcp/auth_callback";
+// Matches the "claude" entry of MCP_CLIENTS in vitest.config.ts.
+export const CLAUDE_ID = "claude";
+export const CLAUDE_SECRET = "test-only-".repeat(4);
+
+export function basicAuth(id: string, secret: string): string {
+  return `Basic ${btoa(`${id}:${secret}`)}`;
+}
 
 // Minimal cookie jar: remembers name=value from Set-Cookie, drops Max-Age=0 cookies.
-export class CookieJar {
+class CookieJar {
   private readonly cookies = new Map<string, string>();
 
   absorb(response: Response): void {
@@ -29,20 +36,6 @@ export function call(path: string, init?: RequestInit): Promise<Response> {
   return exports.default.fetch(new Request(`${ORIGIN}${path}`, { redirect: "manual", ...init }));
 }
 
-export async function registerClient(redirectUris: readonly string[] = [CLAUDE_REDIRECT]): Promise<Response> {
-  return call("/register", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      client_name: "Claude",
-      redirect_uris: redirectUris,
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      token_endpoint_auth_method: "none",
-    }),
-  });
-}
-
 function base64url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
     .replaceAll("+", "-")
@@ -64,34 +57,26 @@ export interface EtsyRedirect {
   readonly etsyUrl: URL;
 }
 
-// Registers a client, opens /authorize, approves, and stops at the redirect to Etsy.
+// Opens /authorize as the pre-registered Claude client and stops at the redirect to Etsy.
 export async function startAuthorization(): Promise<EtsyRedirect> {
-  const registered = await (await registerClient()).json<{ client_id: string }>();
   const { verifier, challenge } = await pkcePair();
   const jar = new CookieJar();
   const query = new URLSearchParams({
     response_type: "code",
-    client_id: registered.client_id,
+    client_id: CLAUDE_ID,
     redirect_uri: CLAUDE_REDIRECT,
     state: "client-state",
     code_challenge: challenge,
     code_challenge_method: "S256",
     resource: `${ORIGIN}/mcp`,
   });
-  const page = await call(`/authorize?${query.toString()}`);
-  jar.absorb(page);
-  const handle = /name="handle" value="([^"]+)"/u.exec(await page.text())?.[1] ?? "";
-  const approved = await call("/authorize", {
-    method: "POST",
-    headers: { cookie: jar.header(), "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ handle, decision: "approve" }),
-  });
-  jar.absorb(approved);
+  const started = await call(`/authorize?${query.toString()}`);
+  jar.absorb(started);
   return {
     jar,
-    clientId: registered.client_id,
+    clientId: CLAUDE_ID,
     verifier,
-    etsyUrl: new URL(approved.headers.get("location") ?? "https://invalid.example"),
+    etsyUrl: new URL(started.headers.get("location") ?? "https://invalid.example"),
   };
 }
 
@@ -110,23 +95,39 @@ export interface Connected {
   readonly clientId: string;
 }
 
-// The whole happy path: authorize, Etsy sign-in, code-for-token exchange.
-export async function connect(): Promise<Connected> {
+// Authorize, Etsy sign-in, and stop with the authorization code the client receives.
+export async function authorizationCode(): Promise<EtsyRedirect & { code: string }> {
   const redirect = await startAuthorization();
   const callback = await etsyCallback(redirect);
   const code = new URL(callback.headers.get("location") ?? "https://invalid.example").searchParams.get("code") ?? "";
-  const token = await call("/token", {
+  return { ...redirect, code };
+}
+
+// POSTs a form to /token, authenticating as `credentials` with HTTP Basic when given.
+export function tokenRequest(form: Record<string, string>, credentials?: readonly [string, string]): Promise<Response> {
+  return call("/token", {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      ...(credentials === undefined ? {} : { authorization: basicAuth(...credentials) }),
+    },
+    body: new URLSearchParams(form),
+  });
+}
+
+// The whole happy path: authorize, Etsy sign-in, code-for-token exchange.
+export async function connect(): Promise<Connected> {
+  const redirect = await authorizationCode();
+  const token = await tokenRequest(
+    {
       grant_type: "authorization_code",
-      code,
+      code: redirect.code,
       redirect_uri: CLAUDE_REDIRECT,
-      client_id: redirect.clientId,
       code_verifier: redirect.verifier,
       resource: `${ORIGIN}/mcp`,
-    }),
-  });
+    },
+    [CLAUDE_ID, CLAUDE_SECRET],
+  );
   const body = await token.json<{ access_token: string; refresh_token: string }>();
   return { accessToken: body.access_token, refreshToken: body.refresh_token, clientId: redirect.clientId };
 }

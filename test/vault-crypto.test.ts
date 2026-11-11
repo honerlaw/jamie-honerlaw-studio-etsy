@@ -20,6 +20,19 @@ describe("parseKeyRing", () => {
   });
 });
 
+it("never quotes the secret in its error messages", async () => {
+  const secretish = "TESTONLY".repeat(5);
+  for (const json of [
+    secretish,
+    JSON.stringify({ k: "!!" + secretish }),
+    JSON.stringify({ k: btoa(secretish.slice(0, 8)) }),
+  ]) {
+    const error: unknown = await parseKeyRing(json, "k").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(TypeError);
+    expect(String(error)).not.toContain(secretish.slice(0, 8));
+  }
+});
+
 describe("seal and unseal", () => {
   it("round-trips and uses a fresh IV every time", async () => {
     const ring = await parseKeyRing(JSON.stringify({ k: KEY }), "k");

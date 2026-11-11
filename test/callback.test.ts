@@ -2,7 +2,7 @@ import { createExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { buildProvider } from "../src/auth/build-provider";
+import { handleRequest } from "../src/auth/handle-request";
 import { ME_ROUTE, mockEtsy, TOKEN_ROUTE, type EtsyMock } from "./support/etsy-mock";
 import {
   call,
@@ -34,8 +34,7 @@ function callbackWithEnv(redirect: EtsyRedirect, overrides: Partial<Env>): Promi
     headers: { cookie: redirect.jar.header() },
     redirect: "manual",
   });
-  const overridden = { ...env, ...overrides };
-  return buildProvider(overridden, ORIGIN).fetch(request, overridden, createExecutionContext());
+  return handleRequest(request, { ...env, ...overrides }, createExecutionContext());
 }
 
 describe("redirect to Etsy", () => {
@@ -138,6 +137,16 @@ describe("allowlist", () => {
   });
 });
 
+it("answers a generic 500, no grant, when the vault can't store the tokens", async () => {
+  const broken = {
+    getByName: () => ({ store: () => Promise.reject(new SyntaxError('Unexpected token "Zm9v" secret')) }),
+  } as unknown as Env["ETSY_TOKEN_VAULT"];
+  const response = await callbackWithEnv(await startAuthorization(), { ETSY_TOKEN_VAULT: broken });
+  expect(response.status).toBe(500);
+  expect(await response.text()).not.toContain("Zm9v");
+  expect(await grantCount()).toBe(0);
+});
+
 describe("bootstrap mode", () => {
   it("shows the ids and grants nothing when ALLOWLIST_BOOTSTRAP is true", async () => {
     etsy.routes.set(ME_ROUTE, () => Response.json({ user_id: 4242, shop_id: 5353 }));
@@ -155,70 +164,6 @@ describe("bootstrap mode", () => {
     const response = await etsyCallback(await startAuthorization());
     expect(response.status).toBe(403);
     expect(await response.text()).not.toMatch(/4242|5353/u);
-  });
-});
-
-describe("consent page", () => {
-  it("names the client and the redirect host, and can't be framed", async () => {
-    const { registerClient } = await import("./support/oauth-flow");
-    const registered = await (await registerClient()).json<{ client_id: string }>();
-    const query = new URLSearchParams({
-      response_type: "code",
-      client_id: registered.client_id,
-      redirect_uri: CLAUDE_REDIRECT,
-      code_challenge: "x".repeat(43),
-      code_challenge_method: "S256",
-    });
-    const response = await call(`/authorize?${query.toString()}`);
-    expect(response.status).toBe(200);
-    const page = await response.text();
-    expect(page).toContain("Claude");
-    expect(page).toContain("claude.ai");
-    expect(response.headers.get("x-frame-options")).toBe("DENY");
-    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
-  });
-
-  it("renders an unknown client locally instead of redirecting", async () => {
-    const response = await call(`/authorize?response_type=code&client_id=nope&redirect_uri=${CLAUDE_REDIRECT}`);
-    expect(response.status).toBe(400);
-  });
-
-  it("refuses a consent form posted without this browser's binding cookie", async () => {
-    const response = await call("/authorize", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ handle: "forged", decision: "approve" }),
-    });
-    expect(response.status).toBe(400);
-  });
-
-  it("sends the client access_denied when she cancels", async () => {
-    const { CookieJar, registerClient } = await import("./support/oauth-flow");
-    const registered = await (await registerClient()).json<{ client_id: string }>();
-    const jar = new CookieJar();
-    const query = new URLSearchParams({
-      response_type: "code",
-      client_id: registered.client_id,
-      redirect_uri: CLAUDE_REDIRECT,
-      state: "s1",
-      code_challenge: "x".repeat(43),
-      code_challenge_method: "S256",
-    });
-    const page = await call(`/authorize?${query.toString()}`);
-    jar.absorb(page);
-    const handle = /name="handle" value="([^"]+)"/u.exec(await page.text())?.[1] ?? "";
-    const response = await call("/authorize", {
-      method: "POST",
-      headers: { cookie: jar.header(), "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ handle, decision: "deny" }),
-    });
-    expect(response.status).toBe(302);
-    expect(new URL(response.headers.get("location") ?? "").searchParams.get("error")).toBe("access_denied");
-  });
-
-  it("allows only GET and POST", async () => {
-    const response = await call("/authorize", { method: "PUT" });
-    expect(response.status).toBe(405);
   });
 });
 

@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
+import { parseMcpClients } from "../src/auth/mcp-clients";
 import { handleMcp } from "../src/mcp/handle-mcp";
 import { mockEtsy, SHOP_ROUTE, type EtsyMock } from "./support/etsy-mock";
 import { connect, mcp, ORIGIN } from "./support/oauth-flow";
@@ -100,20 +101,34 @@ describe("handleMcp re-checks", () => {
   const request = () => new Request(`${ORIGIN}/mcp`, { method: "POST", body: "{}" });
   const ctx = (extra: Record<string, unknown>) => Object.assign(createExecutionContext(), extra);
   const props = { etsyUserId: "1001", shopId: "2002" };
+  const clients = parseMcpClients(env.MCP_CLIENTS);
+  const auth = { audience: `${ORIGIN}/mcp`, clientId: "claude" };
 
   it("rejects a token issued for another resource (audience)", async () => {
     const response = await handleMcp(
       request(),
       env,
-      ctx({ props, auth: { audience: "https://other.example/mcp" } }),
+      ctx({ props, auth: { ...auth, audience: "https://other.example/mcp" } }),
       oauth,
+      clients,
     );
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toContain("invalid_token");
   });
 
   it("rejects a request with no auth context", async () => {
-    expect((await handleMcp(request(), env, ctx({ props }), oauth)).status).toBe(401);
+    expect((await handleMcp(request(), env, ctx({ props }), oauth, clients)).status).toBe(401);
+  });
+
+  it("rejects a token whose client is no longer on the list", async () => {
+    const response = await handleMcp(
+      request(),
+      env,
+      ctx({ props, auth: { ...auth, clientId: "gone" } }),
+      oauth,
+      clients,
+    );
+    expect(response.status).toBe(401);
   });
 
   it.each([
@@ -121,12 +136,7 @@ describe("handleMcp re-checks", () => {
     ["another user", { etsyUserId: "9", shopId: "2002" }],
     ["missing props", undefined],
   ])("refuses a grant for %s once the allowlist no longer matches", async (_case, grantProps) => {
-    const response = await handleMcp(
-      request(),
-      env,
-      ctx({ props: grantProps, auth: { audience: `${ORIGIN}/mcp` } }),
-      oauth,
-    );
+    const response = await handleMcp(request(), env, ctx({ props: grantProps, auth }), oauth, clients);
     expect(response.status).toBe(403);
   });
 });

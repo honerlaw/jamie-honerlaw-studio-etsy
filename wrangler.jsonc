@@ -21,8 +21,6 @@
   "vars": {
     // "true" only while looking up her Etsy ids for the allowlist. Never grants access.
     "ALLOWLIST_BOOTSTRAP": "false",
-    // Extra MCP client redirect URIs, comma-separated, on top of ChatGPT's and Claude's.
-    "ALLOWED_REDIRECT_URIS": "",
   },
   "secrets": {
     "required": [
@@ -32,6 +30,8 @@
       "ALLOWED_ETSY_SHOP_ID",
       "TOKEN_ENC_KEYS",
       "TOKEN_ENC_KID",
+      // The complete list of MCP client apps allowed to connect (README: "MCP clients").
+      "MCP_CLIENTS",
     ],
   },
 }
