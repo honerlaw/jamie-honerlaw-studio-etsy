@@ -1,11 +1,37 @@
-// Cloudflare Workers configuration. Phase 1 is deliberately minimal: the build
-// gate (`wrangler deploy --dry-run`) and the Workers test project both read it.
-// Bindings (Durable Objects, KV, R2, cron) are added by the phase that uses them.
+// Cloudflare Workers configuration, read by the build gate (`wrangler deploy --dry-run`),
+// the Workers test project and `wrangler types` (rerun `npm run gen:worker-types` after
+// any change here). Phase 3 adds the R2 bucket and the cron trigger.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "etsy-shop-mcp",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
-  "compatibility_flags": ["nodejs_compat"],
+  // global_fetch_strictly_public: outbound fetch() can only reach the public internet.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [
+      { "name": "ETSY_TOKEN_VAULT", "class_name": "EtsyTokenVault" },
+      { "name": "ONE_TIME_STORE", "class_name": "OneTimeStore" },
+    ],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["EtsyTokenVault", "OneTimeStore"] }],
+  // No ids: `wrangler deploy` provisions both namespaces on first deploy.
+  "kv_namespaces": [{ "binding": "OAUTH_KV" }, { "binding": "SHOP_KV" }],
+  "vars": {
+    // "true" only while looking up her Etsy ids for the allowlist. Never grants access.
+    "ALLOWLIST_BOOTSTRAP": "false",
+  },
+  "secrets": {
+    "required": [
+      "ETSY_KEYSTRING",
+      "ETSY_SHARED_SECRET",
+      "ALLOWED_ETSY_USER_ID",
+      "ALLOWED_ETSY_SHOP_ID",
+      "TOKEN_ENC_KEYS",
+      "TOKEN_ENC_KID",
+      // The complete list of MCP client apps allowed to connect (README: "MCP clients").
+      "MCP_CLIENTS",
+    ],
+  },
 }

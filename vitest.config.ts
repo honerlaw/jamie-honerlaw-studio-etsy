@@ -1,6 +1,30 @@
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
+// Test-only secrets. The key is 32 zero bytes: fine for tests, never for a deployment.
+const TEST_BINDINGS = {
+  ETSY_KEYSTRING: "test-keystring",
+  ETSY_SHARED_SECRET: "test-shared-secret",
+  ALLOWED_ETSY_USER_ID: "1001",
+  ALLOWED_ETSY_SHOP_ID: "2002",
+  TOKEN_ENC_KEYS: JSON.stringify({ k1: "A".repeat(43) + "=" }),
+  TOKEN_ENC_KID: "k1",
+  MCP_CLIENTS: JSON.stringify([
+    {
+      id: "claude",
+      name: "Claude",
+      secret: "test-only-".repeat(4),
+      redirectUris: ["https://claude.ai/api/mcp/auth_callback", "https://claude.com/api/mcp/auth_callback"],
+    },
+    {
+      id: "chatgpt",
+      name: "ChatGPT",
+      secret: "test-only-".repeat(5),
+      redirectUris: ["https://chatgpt.com/connector_platform_oauth_redirect"],
+    },
+  ]),
+};
+
 // Two projects, one `npm test`:
 // - `workers` runs every test of src/ inside the real workerd runtime and is the
 //   only project coverage is collected from.
@@ -21,10 +45,13 @@ export default defineConfig({
     },
     projects: [
       {
-        plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.jsonc" } })],
+        plugins: [
+          cloudflareTest({ wrangler: { configPath: "./wrangler.jsonc" }, miniflare: { bindings: TEST_BINDINGS } }),
+        ],
         test: {
           name: "workers",
           include: ["test/**/*.test.ts"],
+          setupFiles: ["./test/support/setup.ts"],
         },
       },
       {

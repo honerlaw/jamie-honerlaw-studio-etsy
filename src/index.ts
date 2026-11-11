@@ -1,15 +1,12 @@
-import { handleHealth } from "./routes/handle-health";
+import { handleRequest } from "./auth/handle-request";
 
-const worker: ExportedHandler = {
-  fetch(request: Request): Response {
-    const { pathname } = new URL(request.url);
-    if (request.method === "GET" && pathname === "/health") {
-      return handleHealth();
-    }
-    return new Response("Not found", { status: 404 });
+export { OneTimeStore } from "./storage/one-time-store";
+export { EtsyTokenVault } from "./vault/etsy-token-vault";
+
+// Workers requires the handler as the module's default export (see the carve-out in
+// eslint.config.ts). The Durable Object classes must be exported from here too.
+export default {
+  fetch(request, env, ctx) {
+    return handleRequest(request, env, ctx);
   },
-};
-
-// Workers requires the handler as the module's default export (see the
-// src/index.ts carve-out in eslint.config.ts).
-export default worker;
+} satisfies ExportedHandler<Env>;

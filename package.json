@@ -19,8 +19,9 @@
     "gen:etsy-types": "openapi-typescript etsy/openapi.json -o src/etsy/generated/schema.ts",
     "check:etsy-types": "node scripts/check-etsy-types.mjs",
     "dev": "wrangler dev",
-    "gen:worker-types": "wrangler types",
-    "check:worker-types": "wrangler types --check"
+    "gen:worker-types": "wrangler types --strict-vars=false",
+    "check:worker-types": "wrangler types --strict-vars=false --check",
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.7.0",
@@ -49,5 +50,11 @@
     "workerd@1.20260815.1": true,
     "workerd@1.20261110.1": true,
     "fsevents": false
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "1.2.4",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "openapi-fetch": "0.17.0",
+    "zod": "4.6.7"
   }
 }
