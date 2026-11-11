@@ -27,15 +27,16 @@ const TEST_BINDINGS = {
 };
 
 // Two projects, one `npm test`:
-// - `workers` runs every test of src/ inside the real workerd runtime and is the
-//   only project coverage is collected from.
+// - `workers` runs every test of src/ inside the real workerd runtime.
 // - `node` runs repo-level checks (lint gate, CI structure, gate integrity) that
-//   need Node APIs such as the filesystem and ESLint itself.
+//   need Node APIs such as the filesystem and ESLint itself, and the tests of the
+//   TypeScript deploy and bootstrap scripts in scripts/.
+// Coverage covers src/ and scripts/**/*.ts under the same floors.
 export default defineConfig({
   test: {
     coverage: {
       provider: "istanbul",
-      include: ["src/**/*.ts"],
+      include: ["src/**/*.ts", "scripts/**/*.ts"],
       exclude: ["src/etsy/generated/**"],
       reporter: ["text", "json-summary"],
       thresholds: {

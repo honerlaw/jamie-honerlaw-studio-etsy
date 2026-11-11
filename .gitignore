@@ -8,3 +8,7 @@ coverage/
 !.dev.vars.example
 # Etsy's doc pages are copyrighted; keep the local copy out of this public repo.
 docs/research/etsy/raw/
+# Terraform working files and the generated deploy config (scripts/deploy.ts).
+infra/.terraform/
+infra/tfplan
+wrangler.deploy.json

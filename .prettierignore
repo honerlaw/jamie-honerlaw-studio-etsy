@@ -8,3 +8,6 @@ src/etsy/generated/
 worker-configuration.d.ts
 docs/research/
 .minerva/
+infra/.terraform/
+infra/tfplan
+wrangler.deploy.json

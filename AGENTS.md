@@ -22,7 +22,7 @@ This repository is a remote MCP server (TypeScript on Cloudflare Workers) for ma
 **The gates are the only review a PR gets** (the `main` ruleset requires the `ci-pass` check with 0 approvals). Run them all before pushing:
 
 ```sh
-npm run typecheck && npm run lint && npm run format:check && npm run knip && npm test && npm run build && npm run check:etsy-types && npm run check:worker-types
+npm run typecheck && npm run lint && npm run format:check && npm run knip && npm test && npm run build && npm run check:etsy-types && npm run check:worker-types && npm run check:infra
 ```
 
 Rules:
@@ -34,4 +34,5 @@ Rules:
 - **Generated files are never hand-edited:** `src/etsy/generated/schema.ts` (`npm run gen:etsy-types`) and `worker-configuration.d.ts` (`npm run gen:worker-types`, rerun after any `wrangler.jsonc` change).
 - **Add a dependency in the PR that first uses it** (knip rejects unused ones). Pin exact versions.
 - **Hard-to-reach branches** (crypto and storage failures, time) are tested through injectable interfaces, not excluded from coverage.
-- Tests that run Worker code go in `test/` (workerd). Repo-level checks go in `tests/` (Node).
+- Tests that run Worker code go in `test/` (workerd). Repo-level checks go in `tests/` (Node), and tests of the TypeScript scripts in `scripts/` go in `tests/scripts/`.
+- **Production is deployed only by `.github/workflows/deploy.yml`** (`.minerva/reference/deploy.md`). Never run `terraform apply`, `terraform import` or `wrangler deploy` against production by hand; change `infra/` or Doppler and let the workflow apply it.

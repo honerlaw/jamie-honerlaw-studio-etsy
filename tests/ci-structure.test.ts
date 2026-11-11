@@ -12,6 +12,7 @@ interface Step {
 
 interface Job {
   readonly needs?: readonly string[];
+  readonly environment?: unknown;
   readonly if?: string;
   readonly "continue-on-error"?: unknown;
   readonly steps?: readonly Step[];
@@ -63,6 +64,7 @@ describe("ci.yml structure", () => {
       test: ["npm test"],
       build: ["npm run build"],
       "generated-types-match": ["npm run check:etsy-types", "npm run check:worker-types"],
+      terraform: ["npm run check:infra"],
       "secret-scan": ["/tmp/gitleaks git"],
     };
     for (const [id, commands] of Object.entries(expected)) {
@@ -74,6 +76,16 @@ describe("ci.yml structure", () => {
         ).toBe(true);
       }
     }
+  });
+
+  it("never runs a job in the production environment, so no CI job can read DOPPLER_TOKEN", () => {
+    const { jobs } = loadCi();
+    for (const [id, job] of Object.entries(jobs)) {
+      expect(job.environment, `job ${id}`).toBeUndefined();
+    }
+    expect(readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8")).not.toMatch(
+      /environment|secrets\./u,
+    );
   });
 
   it("runs on every pull request with no path filters", () => {

@@ -118,6 +118,35 @@ describe("gate integrity", () => {
     expect(Object.keys(node.compilerOptions).sort()).toStrictEqual(["lib", "types"]);
   });
 
+  it("keeps tsconfig.scripts.json from overriding any strict flag", () => {
+    const scripts = readJson("tsconfig.scripts.json") as CompilerOptions & {
+      readonly extends: string;
+      readonly include: readonly string[];
+    };
+    expect(scripts.extends).toBe("./tsconfig.json");
+    // The environment, plus the two flags Node's type stripping needs; never a strictness flag.
+    expect(Object.keys(scripts.compilerOptions).sort()).toStrictEqual(
+      ["allowImportingTsExtensions", "erasableSyntaxOnly", "lib", "types"].sort(),
+    );
+    expect(scripts.compilerOptions["erasableSyntaxOnly"]).toBe(true);
+    expect([...scripts.include].sort()).toStrictEqual(["scripts/**/*.ts", "tests/scripts/**/*.ts"]);
+  });
+
+  it("typechecks all three programs", () => {
+    const { scripts } = readJson("package.json") as { readonly scripts: Record<string, string> };
+    expect(scripts["typecheck"]).toBe(
+      "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
+    );
+  });
+
+  it("keeps the Terraform check whole", () => {
+    // The test job has no Terraform, so this text pin stands in for a failure test.
+    const { scripts } = readJson("package.json") as { readonly scripts: Record<string, string> };
+    expect(scripts["check:infra"]).toBe(
+      "terraform fmt -check -recursive infra && terraform -chdir=infra init -backend=false -lockfile=readonly -input=false && terraform -chdir=infra validate",
+    );
+  });
+
   it("lints with zero warnings allowed", () => {
     const { scripts } = readJson("package.json") as { readonly scripts: Record<string, string> };
     expect(scripts["lint"]).toContain("--max-warnings 0");
@@ -125,9 +154,14 @@ describe("gate integrity", () => {
 
   it("keeps the coverage thresholds and the per-file floor", async () => {
     const { default: config } = (await import(path.join(ROOT, "vitest.config.ts"))) as {
-      readonly default: { readonly test: { readonly coverage: { readonly thresholds: CoverageThresholds } } };
+      readonly default: {
+        readonly test: {
+          readonly coverage: { readonly thresholds: CoverageThresholds; readonly include: readonly string[] };
+        };
+      };
     };
-    const { thresholds } = config.test.coverage;
+    const { thresholds, include } = config.test.coverage;
+    expect([...include].sort()).toStrictEqual(["scripts/**/*.ts", "src/**/*.ts"]);
     expect(thresholds.lines).toBeGreaterThanOrEqual(90);
     expect(thresholds.branches).toBeGreaterThanOrEqual(90);
     const floorScript = readText("scripts/check-coverage-floor.mjs");
@@ -142,7 +176,17 @@ describe("gate integrity", () => {
       readonly jobs: Record<string, { readonly needs?: readonly string[] }>;
     };
     expect([...(jobs["ci-pass"]?.needs ?? [])].sort()).toStrictEqual(
-      ["build", "format", "generated-types-match", "knip", "lint", "secret-scan", "test", "typecheck"].sort(),
+      [
+        "build",
+        "format",
+        "generated-types-match",
+        "knip",
+        "lint",
+        "secret-scan",
+        "terraform",
+        "test",
+        "typecheck",
+      ].sort(),
     );
   });
 
@@ -176,6 +220,23 @@ describe("gate integrity", () => {
     for (const rule of REQUIRED_ERROR_RULES.filter((name) => name !== "agentic/one-export-per-file")) {
       expect(severityOf(rules[rule]), `rule ${rule}`).toBe(2);
     }
+  });
+
+  it("keeps the source rules (bar one-export-per-file) at error for TypeScript scripts", async () => {
+    for (const file of ["scripts/deploy.ts", "scripts/deploy/run-deploy.ts"]) {
+      const rules = await rulesFor(file);
+      for (const rule of REQUIRED_ERROR_RULES.filter((name) => name !== "agentic/one-export-per-file")) {
+        expect(severityOf(rules[rule]), `rule ${rule} for ${file}`).toBe(2);
+      }
+    }
+  });
+
+  it("limits the production environment to main", () => {
+    expect(readJson(".github/environments/production.json")).toStrictEqual({
+      name: "production",
+      deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+      branch_policies: [{ name: "main", type: "branch" }],
+    });
   });
 
   it("keeps the core rules at error for repo scripts", async () => {
