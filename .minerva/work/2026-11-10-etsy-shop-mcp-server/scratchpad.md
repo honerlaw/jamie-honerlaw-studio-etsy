@@ -38,6 +38,8 @@
 - [solo] phase 3 `search_categories` filters the seller taxonomy tree client-side (tier: solo — Etsy has no search endpoint for it; one read)
 - [solo] phase 3 Connecting outcome: not recorded — the owner hasn't reported the post-deploy connection result yet; the user guide keeps the placeholder and the final report asks for it (tier: solo — the proposal says Phase 3 doesn't wait on it)
 
+- [reviewed — accept with fixes] completion verification (phase 3): Verifier reran all gates (290 tests, 99.4% statements) and mapped every Phase 3 criterion to a test; gaps folded as review FIXes: photos sent without `rank` (Etsy defaults to 1, so they'd land first in reverse), and the attach retry didn't skip recorded photos (tier: reviewer floor — no interface beyond what the proposal approved)
+- [solo] review triage (phase 3): 11 FIX / 1 SUGGEST / 0 IGNORE (tier: default-solo row — each finding had a concrete failure scenario and an absorbable fix; the one SUGGEST, a download-host allowlist, needs ChatGPT's real file hosts, which only the live smoke run shows, and the image it guards against is removable with the gated remove_listing_image)
 ## Work notes — Phase 3 (2026-11-10)
 - 27 tools (the proposal's list; the "about 35" estimate was high). `test/tools.test.ts` pins the exact set, annotations, and calls every tool once over the protocol.
 - Bugs caught by tests while building: `fetchPages` didn't flag truncation when the cap landed exactly on `maxItems`; `get_views_trend` crashed on a corrupt snapshot (now skipped); an empty or non-numeric `content-length` passed the upload size check (now `/^\d+$/`).
@@ -115,6 +117,21 @@ Auth security review of the replan commit (3caece9), 4 findings, nothing high:
 9. FIX (low): redirect URIs with a fragment or user info passed zod but made the library throw on every request (a 500, and it blocked later clients). zod now rejects them, and any sync failure answers the fail-closed 503 (`config_invalid`/`client_sync`).
 10. FIX (low, docs): the ~60s KV propagation for a rotated secret, and running revoke-all-grants after removing a leaked client (re-adding the id would otherwise revive unexpired access tokens), are now in the README runbook.
 Verifier advisories folded as tests: the ChatGPT client authenticates at /token, an unlisted body client_id is refused end to end, and a lost record is repaired.
+
+## Review triage 2026-11-11 (phase 3)
+Verifier gaps plus an independent diff review, 12 findings, nothing high:
+1. FIX (Verifier, medium): uploads sent no `rank`, and Etsy's default is 1, so each new photo would take the main spot and her order would reverse. Ranks are now explicit (existing count + 1, incrementing) in attach and the fast path; `.minerva/reference/etsy-api.md` records the default.
+2. FIX (both, medium): the attach loop re-sent any staged object, even one already recorded as on Etsy. It now skips and deletes those, and the upload POST refuses (409) a rank already on Etsy.
+3. FIX (review, medium): a new upload link during an attach let the stale attach overwrite the new session (`update`) and then delete it (`consume`). `OneTimeStore.claim` now returns a lease id; `update`/`finish`/`release` act only for the current holder, and a `put` drops the lease, so the stale attach stops with "A new upload link replaced this one".
+4. FIX (review, medium): `add_listing_image` buffered an unsized download whole. It now streams with a 10 MB cutoff (declared size still checked first).
+5. SUGGEST (review, medium): the fast path fetches any public https URL, so a prompt injection (buyer message, review text) could get the model to add an attacker's image to a listing, ungated. Pin ChatGPT's file-download hosts once the live smoke run shows them. Until then: public-only fetch (`global_fetch_strictly_public`), JPEG/PNG and size checks, and the image can be removed.
+6. FIX (review, low/medium): `update_listing_inventory` accepted an `offering_id` that isn't that product's and reported success for a no-op write. It is now refused before any write.
+7. FIX (review, low): a photo that arrived after an attach claimed the session was orphaned while the page said "done". The upload re-peeks after the R2 put and takes the photo back with a 409.
+8. FIX (review, low): `update_listing` could turn auto-renew on, committing her to a fee each renewal, without confirmation. It now accepts only `false`.
+9. FIX (review, low): sales "revenue" summed `grandtotal` (tax included) and counted refunded orders. Now: item sales (`subtotal`), shipping and partial refunds per currency, fully refunded orders left out and counted; refund notes and reasons never leave the server.
+10. FIX (review, low): 429 retries could push past Workers Free's 50 subrequests and crash the cron. Each invocation now shares a 45-request Etsy budget that retries draw from, and a 429 after the first page ends a multi-page read as truncated, keeping the pages read.
+11. FIX (review, low): the renew preview now says a sold-out listing's quantity becomes 1.
+12. FIX (Verifier, optional): a second visit to the link restarting at rank 0 can't duplicate photos any more (covered by #2); the user guide says to ask again rather than re-upload.
 
 ## Mode B promotions (phase 1)
 - import-x resolver/parsers constraint → promoted to .minerva/knowledge/2026-11-10-constraint-import-x-needs-typescript-resolver-and-parsers.md

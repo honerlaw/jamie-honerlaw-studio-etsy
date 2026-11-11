@@ -1,6 +1,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
+import { MONEY } from "../../etsy/shapes/money";
 import { ORDER_SUMMARY } from "../../etsy/shapes/receipt";
 import { etsyError } from "../etsy-error";
 import { fetchReceipts } from "../orders/fetch-receipts";
@@ -13,6 +14,25 @@ import { METRICS_NOTE } from "./metrics-note";
 const MAX_PAGES = 30;
 const TOP = 10;
 
+// The money a summary needs from a receipt. Refund notes and reasons stay out.
+const SALE = ORDER_SUMMARY.extend({
+  subtotal: MONEY.nullish(),
+  total_shipping_cost: MONEY.nullish(),
+  refunds: z.array(z.object({ amount: MONEY.nullish() })).nullish(),
+});
+
+type Money = z.output<typeof MONEY>;
+
+function add(totals: Map<string, number>, money: Money | null | undefined): void {
+  if (money !== null && money !== undefined) {
+    totals.set(money.currency_code, (totals.get(money.currency_code) ?? 0) + money.amount);
+  }
+}
+
+function rounded(totals: Map<string, number>): Record<string, number> {
+  return Object.fromEntries([...totals].map(([currency, amount]) => [currency, round(amount)]));
+}
+
 interface Tally {
   title: string;
   quantity: number;
@@ -23,8 +43,9 @@ function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-// Revenue, order count and top listings between two UTC dates, from paid, uncanceled
-// receipts. Revenue is each receipt's grand total, per currency.
+// Sales between two UTC dates from paid, uncanceled receipts, per currency: item sales
+// after coupons (no tax, which Etsy collects and remits, and no shipping), shipping on
+// its own line, and partial refunds. Fully refunded orders are left out and counted.
 export async function getSalesSummary(
   deps: ShopToolDeps,
   args: { readonly from: string; readonly to: string },
@@ -44,16 +65,20 @@ export async function getSalesSummary(
     if (!pages.ok) {
       return etsyError(pages.response);
     }
-    const orders = z.array(ORDER_SUMMARY).safeParse(pages.items);
-    if (!orders.success) {
+    const parsed = z.array(SALE).safeParse(pages.items);
+    if (!parsed.success) {
       return toolText("Etsy returned orders in an unexpected shape.", true);
     }
-    const revenue = new Map<string, number>();
+    const orders = parsed.data.filter((order) => order.status !== "fully refunded");
+    const sales = new Map<string, number>();
+    const shipping = new Map<string, number>();
+    const refunded = new Map<string, number>();
     const listings = new Map<number, Tally>();
-    for (const order of orders.data) {
-      if (order.grandtotal !== null && order.grandtotal !== undefined) {
-        const { currency_code: currency, amount } = order.grandtotal;
-        revenue.set(currency, (revenue.get(currency) ?? 0) + amount);
+    for (const order of orders) {
+      add(sales, order.subtotal);
+      add(shipping, order.total_shipping_cost);
+      for (const refund of order.refunds ?? []) {
+        add(refunded, refund.amount);
       }
       for (const item of order.transactions) {
         const id = item.listing_id ?? 0;
@@ -70,8 +95,11 @@ export async function getSalesSummary(
     return toolText({
       from: args.from,
       to: args.to,
-      orders: orders.data.length,
-      revenue: Object.fromEntries([...revenue].map(([currency, amount]) => [currency, round(amount)])),
+      orders: orders.length,
+      item_sales: rounded(sales),
+      shipping: rounded(shipping),
+      refunded: rounded(refunded),
+      fully_refunded_orders: parsed.data.length - orders.length,
       top_listings: top,
       ...(pages.truncated ? { truncated: "Stopped at the newest 3,000 orders; the totals miss older ones." } : {}),
       note: METRICS_NOTE,

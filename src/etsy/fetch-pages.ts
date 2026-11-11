@@ -9,7 +9,9 @@ export type PagesResult<T> =
 
 // Reads pages of `pageSize` until Etsy has no more, `maxItems` are collected, or
 // `maxPages` pages were read. Workers Free allows 50 subrequests per invocation, so
-// every caller passes a page cap; when the cap stops it early, `truncated` says so.
+// every caller passes a page cap; when the cap stops it early, `truncated` says so. A
+// 429 after the first page (Etsy still limiting after retries, or the invocation's
+// subrequest budget spent) also ends it as truncated, keeping the pages already read.
 export async function fetchPages<T>(
   fetchPage: (offset: number, limit: number) => Promise<PageResult<T>>,
   options: { readonly pageSize: number; readonly maxPages: number; readonly maxItems?: number },
@@ -19,7 +21,9 @@ export async function fetchPages<T>(
   for (let page = 0; page < options.maxPages; page += 1) {
     const result = await fetchPage(page * options.pageSize, options.pageSize);
     if (!result.ok) {
-      return result;
+      return page > 0 && result.response.status === 429
+        ? { ok: true, items: items.slice(0, maxItems), truncated: true }
+        : result;
     }
     items.push(...result.results);
     const exhausted = result.results.length < options.pageSize || items.length >= result.count;

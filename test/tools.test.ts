@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { TOOL_OPERATIONS } from "../src/auth/etsy-scopes";
-import { mockEtsy } from "./support/etsy-mock";
+import { mockEtsy, type EtsyMock } from "./support/etsy-mock";
 import { connect, mcp } from "./support/oauth-flow";
 
 interface Listed {
@@ -21,9 +21,10 @@ const GATED = [
 ];
 
 let tools: readonly Listed[];
+let etsy: EtsyMock;
 
 beforeEach(async () => {
-  mockEtsy();
+  etsy = mockEtsy();
   const { accessToken } = await connect();
   const response = await mcp(accessToken, "tools/list");
   tools = (await response.json<{ result: { tools: Listed[] } }>()).result.tools;
@@ -118,5 +119,15 @@ describe("tools/call", () => {
     const { accessToken } = await connect();
     const response = await mcp(accessToken, "tools/call", { name: "get_listing", arguments: { listing_id: "x" } });
     expect(JSON.stringify(await response.json())).toContain("isError");
+  });
+
+  it("only lets update_listing turn auto-renew off (on means a fee every renewal)", async () => {
+    const { accessToken } = await connect();
+    const on = await mcp(accessToken, "tools/call", {
+      name: "update_listing",
+      arguments: { listing_id: 555, should_auto_renew: true },
+    });
+    expect(JSON.stringify(await on.json())).toContain("isError");
+    expect(etsy.writes()).toHaveLength(0);
   });
 });

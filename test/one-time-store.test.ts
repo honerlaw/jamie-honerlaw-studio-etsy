@@ -62,24 +62,42 @@ describe("OneTimeStore leases (upload sessions)", () => {
   it("grants a lease to exactly one of many concurrent claimers", async () => {
     await stub().put("lease", "v", 60_000);
     const results = await Promise.all(Array.from({ length: 10 }, () => stub().claim("lease", 60_000)));
-    expect(results.filter((result) => result === "v")).toHaveLength(1);
+    expect(results.filter((result) => result?.value === "v")).toHaveLength(1);
     expect(await stub().peek("lease")).toStrictEqual({ value: "v", leased: true });
   });
 
   it("updates under a lease, frees it on release, and lets an expired lease be claimed again", async () => {
     await stub().put("s", "v1", 60_000);
-    expect(await stub().claim("s", 60_000)).toBe("v1");
-    expect(await stub().update("s", "v2")).toBe(true);
+    const first = await stub().claim("s", 60_000);
+    expect(first?.value).toBe("v1");
+    expect(await stub().update("s", first?.lease ?? "", "v2")).toBe(true);
     expect(await stub().peek("s")).toStrictEqual({ value: "v2", leased: true });
-    await stub().release("s");
-    expect(await stub().claim("s", -1)).toBe("v2");
-    expect(await stub().claim("s", 60_000)).toBe("v2");
+    await stub().release("s", first?.lease ?? "");
+    const expired = await stub().claim("s", -1);
+    expect(expired?.value).toBe("v2");
+    const next = await stub().claim("s", 60_000);
+    expect(next?.value).toBe("v2");
+    expect(await stub().update("s", expired?.lease ?? "", "stale")).toBe(false);
+    expect(await stub().finish("s", expired?.lease ?? "")).toBe(false);
+    expect(await stub().finish("s", next?.lease ?? "")).toBe(true);
+    expect(await stub().peek("s")).toBeNull();
+  });
+
+  it("refuses a holder whose entry was replaced by a put", async () => {
+    await stub().put("r", "old", 60_000);
+    const held = await stub().claim("r", 60_000);
+    await stub().put("r", "new", 60_000);
+    expect(await stub().update("r", held?.lease ?? "", "clobber")).toBe(false);
+    await stub().release("r", held?.lease ?? "");
+    expect(await stub().finish("r", held?.lease ?? "")).toBe(false);
+    expect(await stub().peek("r")).toStrictEqual({ value: "new", leased: false });
   });
 
   it("does nothing for a missing or expired entry", async () => {
     expect(await stub().claim("gone", 1000)).toBeNull();
-    expect(await stub().update("gone", "v")).toBe(false);
-    await stub().release("gone");
+    expect(await stub().update("gone", "l", "v")).toBe(false);
+    expect(await stub().finish("gone", "l")).toBe(false);
+    await stub().release("gone", "l");
     await stub().put("expired", "v", -1);
     expect(await stub().peek("expired")).toBeNull();
   });

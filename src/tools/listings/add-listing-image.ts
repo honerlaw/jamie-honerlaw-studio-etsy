@@ -18,12 +18,37 @@ async function download(deps: ShopToolDeps, url: string): Promise<Uint8Array | s
     return "The photo link must be https.";
   }
   const response = await deps.fetchFile(url);
-  const declared = Number(response.headers.get("content-length") ?? "0");
-  if (!response.ok || declared > UPLOAD_LIMITS.maxBytes) {
-    return response.ok ? "That photo is larger than 10 MB." : "The photo couldn't be downloaded.";
+  if (!response.ok || response.body === null) {
+    return "The photo couldn't be downloaded.";
   }
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  return bytes.length > UPLOAD_LIMITS.maxBytes ? "That photo is larger than 10 MB." : bytes;
+  if (Number(response.headers.get("content-length") ?? "0") > UPLOAD_LIMITS.maxBytes) {
+    await response.body.cancel();
+    return "That photo is larger than 10 MB.";
+  }
+  // Read as a stream and stop past 10 MB, so a huge or unsized body can't fill memory.
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (let read = await reader.read(); !read.done; read = await reader.read()) {
+    const chunk: unknown = read.value;
+    if (!(chunk instanceof Uint8Array)) {
+      await reader.cancel();
+      return "The photo couldn't be downloaded.";
+    }
+    size += chunk.length;
+    if (size > UPLOAD_LIMITS.maxBytes) {
+      await reader.cancel();
+      return "That photo is larger than 10 MB.";
+    }
+    chunks.push(chunk);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
 }
 
 // The fast path for a photo attached in ChatGPT on the web: it's downloaded and sent to
@@ -59,7 +84,8 @@ export async function addListingImage(
     const sent = await uploadToEtsy(
       etsy,
       { shopId: deps.shopId, listingId: args.listing_id },
-      { bytes, type: image.type },
+      // After her existing photos.
+      { bytes, type: image.type, rank: (read.listing.images ?? []).length + 1 },
     );
     return sent.ok ? toolText({ added: sent.imageId }) : etsyError(sent.response);
   });

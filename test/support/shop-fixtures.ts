@@ -37,6 +37,9 @@ export function receipt(overrides: Record<string, unknown> = {}): Record<string,
     is_shipped: false,
     created_timestamp: 1_762_732_800,
     grandtotal: { amount: 3000, divisor: 100, currency_code: "USD" },
+    subtotal: { amount: 2500, divisor: 100, currency_code: "USD" },
+    total_shipping_cost: { amount: 400, divisor: 100, currency_code: "USD" },
+    total_tax_cost: { amount: 100, divisor: 100, currency_code: "USD" },
     message_from_buyer: "Gift wrap please",
     transactions: [
       {

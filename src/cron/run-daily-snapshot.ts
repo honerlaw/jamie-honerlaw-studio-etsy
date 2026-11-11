@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { createEtsyClient } from "../etsy/create-etsy-client";
 import { etsyApiKey } from "../etsy/etsy-api-key";
+import { etsySubrequestBudget } from "../etsy/etsy-subrequest-budget";
 import { fetchPages } from "../etsy/fetch-pages";
 import { sleep } from "../etsy/sleep";
 import { logEvent } from "../log/log-event";
@@ -44,6 +45,7 @@ async function snapshot(env: Env, now: number): Promise<CronStatus> {
     accessToken: access.accessToken,
     fetch: (r) => fetch(r),
     sleep,
+    budget: etsySubrequestBudget(),
   });
   const pages = await fetchPages(
     async (offset, limit) => {

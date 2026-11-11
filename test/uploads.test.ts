@@ -6,7 +6,6 @@ import { attachUploadedPhotos } from "../src/tools/listings/attach-uploaded-phot
 import { requestPhotoUpload } from "../src/tools/listings/request-photo-upload";
 import { inspectImage } from "../src/uploads/inspect-image";
 import { signUploadToken } from "../src/uploads/sign-upload-token";
-import { startUploadSession } from "../src/uploads/start-upload-session";
 import { uploadHmacKey } from "../src/uploads/upload-hmac-key";
 import { uploadSessionKey } from "../src/uploads/upload-limits";
 import { verifyUploadToken } from "../src/uploads/verify-upload-token";
@@ -15,6 +14,7 @@ import { jpeg, png } from "./support/images";
 import { call, ORIGIN } from "./support/oauth-flow";
 import { LISTING_ROUTE, listing } from "./support/shop-fixtures";
 import { toolDeps } from "./support/tool-deps";
+import { openSession, stage, upload } from "./support/upload-flow";
 import { resultJson, resultText } from "./support/tool-result";
 
 const IMAGES_ROUTE = "POST /v3/application/shops/2002/listings/555/images";
@@ -38,28 +38,6 @@ const sentMarkers = () =>
     .writes()
     .filter((request) => request.url.endsWith("/listings/555/images"))
     .map((request) => /IMG-\d/u.exec(request.body)?.[0]);
-
-async function openSession(): Promise<{ token: string; nonce: string }> {
-  const link = await startUploadSession(toolDeps(), { shopId: "2002", listingId: 555 }, Date.now());
-  const token = new URLSearchParams(new URL(link.url).hash.slice(1)).get("t") ?? "";
-  const claims = await verifyUploadToken(KEY, token, Date.now());
-  return { token, nonce: claims?.nonce ?? "" };
-}
-
-function upload(token: string, body: Uint8Array<ArrayBuffer>, extra: Record<string, string> = {}): Promise<Response> {
-  return call("/upload/image", {
-    method: "POST",
-    headers: {
-      origin: ORIGIN,
-      authorization: `Upload ${token}`,
-      "x-photo-rank": "0",
-      "content-type": "image/jpeg",
-      "content-length": String(body.length),
-      ...extra,
-    },
-    body,
-  });
-}
 
 describe("upload tokens", () => {
   it("verifies a fresh token and rejects expired, tampered or malformed ones", async () => {
@@ -163,16 +141,8 @@ describe("GET /upload", () => {
 });
 
 describe("attach_uploaded_photos", () => {
-  async function stage(count: number): Promise<string> {
-    const { token, nonce } = await openSession();
-    for (let rank = 0; rank < count; rank += 1) {
-      await upload(token, jpeg(100, 100, `IMG-${String(rank)}`), { "x-photo-rank": String(rank) });
-    }
-    return nonce;
-  }
-
   it("uploads in rank order as multipart, then deletes the staged photos and uses up the session", async () => {
-    const nonce = await stage(3);
+    const { nonce } = await stage(3);
     const result = resultJson<{ attached: number; listing_image_ids: number[] }>(
       await attachUploadedPhotos(toolDeps(), { listing_id: 555 }),
     );
@@ -223,7 +193,7 @@ describe("attach_uploaded_photos", () => {
   });
 
   it("treats an odd Etsy answer as a failure and keeps the photo for a retry", async () => {
-    const nonce = await stage(1);
+    const { nonce } = await stage(1);
     etsy.routes.set(IMAGES_ROUTE, () => Response.json({ ok: true }));
     expect((await attachUploadedPhotos(toolDeps(), { listing_id: 555 })).isError).toBe(true);
     expect((await env.UPLOADS.list({ prefix: `uploads/${nonce}/` })).objects).toHaveLength(1);

@@ -13,7 +13,8 @@ function refuse(status: number, message: string): Response {
 // session that is still open and not being attached. The photo must be a JPEG or PNG of
 // at most 10 MB and 6000 px a side. It is staged in R2 under uploads/<nonce>/<rank>;
 // the rank (0–9, her order) is part of the key, so at most 10 can be staged and
-// uploading the same position again replaces it. One photo per request: a request holds
+// uploading the same position again replaces it, unless that photo already went to
+// Etsy (a partial attach), which is refused so no photo lands twice. One photo per request: a request holds
 // at most one 10 MB image in memory, well inside the Worker's 128 MB.
 export async function handleUploadImage(
   request: Request,
@@ -40,6 +41,10 @@ export async function handleUploadImage(
   if (!Number.isInteger(rank) || rank < 0 || rank >= UPLOAD_LIMITS.maxImages) {
     return refuse(400, "At most 10 photos per upload.");
   }
+  const key = `uploads/${claims.nonce}/${String(rank).padStart(2, "0")}`;
+  if (key in parsed.data.uploaded) {
+    return refuse(409, "That photo is already on the listing.");
+  }
   const length = request.headers.get("content-length") ?? "";
   if (!/^\d+$/u.test(length) || Number(length) > UPLOAD_LIMITS.maxBytes) {
     return refuse(413, "Each photo must be 10 MB or less.");
@@ -55,8 +60,14 @@ export async function handleUploadImage(
   if (image.width > UPLOAD_LIMITS.maxSidePx || image.height > UPLOAD_LIMITS.maxSidePx) {
     return refuse(422, "That photo is larger than 6000 pixels on a side.");
   }
-  await env.UPLOADS.put(`uploads/${claims.nonce}/${String(rank).padStart(2, "0")}`, bytes, {
-    httpMetadata: { contentType: `image/${image.type}` },
-  });
+  await env.UPLOADS.put(key, bytes, { httpMetadata: { contentType: `image/${image.type}` } });
+  // An attach may have started (or the link been replaced) while the photo was on its
+  // way. It would never see this photo, so take it back and say so rather than "done".
+  const after = await oneTimeStoreStub(env).peek(uploadSessionKey(claims.listingId));
+  const still = after === null ? null : UPLOAD_SESSION.safeParse(JSON.parse(after.value));
+  if (after?.leased !== false || still?.success !== true || still.data.nonce !== claims.nonce) {
+    await env.UPLOADS.delete(key);
+    return refuse(409, "The photos were being added to the listing while this one uploaded. Ask for a new link.");
+  }
   return new Response(null, { status: 201 });
 }

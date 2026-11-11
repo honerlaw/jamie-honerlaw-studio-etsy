@@ -52,7 +52,7 @@ Talk to it the way you'd talk to an assistant. Some examples:
 
 - **Your shop:** "Give me an overview of my shop." "What shipping profiles do I have?"
 - **Listings:** "Show my drafts." "Make a draft listing for a blue ceramic mug, $24.50, three in stock." "Change the mug's title to …" "Add tags: gift, coffee."
-- **Photos:** "Add photos to the blue mug." You get a private link (it works for 30 minutes, just for that listing). Open it on your phone, pick or take up to 10 photos, put them in order, tap **Upload**, then tell the assistant you're done.
+- **Photos:** "Add photos to the blue mug." You get a private link (it works for 30 minutes, just for that listing). Open it on your phone, pick or take up to 10 photos, put them in order, tap **Upload**, then tell the assistant you're done. The new photos go after the ones the listing already has. If adding them stops partway, just ask the assistant to try again. Photos that already went through are never added twice.
 - **Prices and stock:** "Raise the large size to $30." "I have 5 more green ones." Only what you mention changes.
 - **Orders:** "What do I need to ship?" "Show order 1234 with the address." Orders show the buyer's name and country; the address appears only when you ask for it.
 - **Numbers:** "How were sales last month?" "Which listings got the most views this week?" "Show my latest reviews."
@@ -66,7 +66,7 @@ Publishing, renewing, deactivating or deleting a listing, removing a photo, and 
 Etsy doesn't share everything its Stats page shows. Through this connection there are **no visits, no search terms and no conversion rate**. What you do get:
 
 - **Views:** each listing's lifetime views, which Etsy updates once a day. The server saves them every morning, so "views this week" works once it has a few days of history.
-- **Favorites** per listing, **reviews**, and **sales**: revenue, number of orders and best sellers for any date range.
+- **Favorites** per listing, **reviews**, and **sales**: item sales (after coupons, without tax or shipping), shipping and refunds, number of orders and best sellers for any date range. Etsy's fees aren't taken off, so this is what buyers paid her, not what she kept.
 
 ## First run checklist
 

@@ -55,6 +55,9 @@ export async function changeListingState(
           quantity: listing.quantity,
           photos: (listing.images ?? []).length,
           ...(change.fee === null ? {} : { fee: change.fee }),
+          ...(listing.state === "sold_out" && change.to === "active"
+            ? { note: "Etsy sets a sold-out listing's quantity to 1 when it's renewed." }
+            : {}),
         };
       },
       write: async () => {

@@ -88,7 +88,6 @@ describe("update_listing_inventory", () => {
       changes: [
         { product_id: 2, offering_id: 20, quantity: 0, is_enabled: false },
         { product_id: 2, sku: "NEW" },
-        { product_id: 1, offering_id: 99, price: 1 },
       ],
     });
     const body = JSON.parse(etsy.writes()[0]?.body ?? "{}") as { products: unknown[] };
@@ -105,6 +104,15 @@ describe("update_listing_inventory", () => {
       changes: [{ product_id: 42, price: 1 }],
     });
     expect(resultText(result)).toContain("No product 42");
+    expect(etsy.writes()).toHaveLength(0);
+  });
+
+  it("refuses an offering that isn't that product's, writing nothing", async () => {
+    const result = await updateListingInventory(toolDeps(), {
+      listing_id: 555,
+      changes: [{ product_id: 1, offering_id: 20, price: 1 }],
+    });
+    expect(resultText(result)).toContain("Product 1 has no offering 20. Nothing was changed.");
     expect(etsy.writes()).toHaveLength(0);
   });
 

@@ -18,7 +18,7 @@ Present-tense facts this server depends on. Gathered 2026-11-10 from Etsy's deve
 - **Publishing:** draft → upload images → `updateListing` with `state=active`. A physical listing also needs a shipping profile, a processing profile (readiness state) and a return policy.
 - **Fees:** activating or renewing a listing most likely charges Etsy's standard listing fee (currently $0.20). The API docs don't state it, so treat it as fee-bearing.
 - **EU product-safety (GPSR) fields** (`gpsr_*`) on listings become **required on 2027-02-01**.
-- **Images:** `uploadListingImage` takes `multipart/form-data` (`image`, `rank`, `overwrite`, `alt_text`, …).
+- **Images:** `uploadListingImage` takes `multipart/form-data` (`image`, `rank`, `overwrite`, `alt_text`, …). `rank` defaults to **1** (the main photo), so the server always sends it explicitly: the listing's current image count + 1, to append. A listing holds at most 10 images.
 
 ## What the API cannot tell us
 - **No stats or traffic data:** no visits, no search terms, no conversion rate.

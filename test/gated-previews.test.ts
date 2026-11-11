@@ -155,6 +155,23 @@ describe("gated writes that Etsy refuses, and optional fields", () => {
     ).toContain("no photos");
   });
 
+  it("warns that renewing a sold-out listing sets its quantity to 1", async () => {
+    etsy.routes.set(LISTING_ROUTE, () => Response.json(listing({ state: "sold_out", quantity: 0 })));
+    const renew = {
+      tool: "renew_listing",
+      from: ["sold_out"],
+      to: "active",
+      what: "renewed",
+      fee: null,
+      needsPhoto: true,
+    } as const;
+    expect(text(await changeListingState(toolDeps(), { listing_id: 555 }, renew))).toContain("quantity to 1");
+    etsy.routes.set(LISTING_ROUTE, () => Response.json(listing({ state: "expired" })));
+    expect(
+      text(await changeListingState(toolDeps(), { listing_id: 555 }, { ...renew, from: ["expired"] as const })),
+    ).not.toContain("quantity to 1");
+  });
+
   it("reports a listing it can't read", async () => {
     etsy.routes.set(LISTING_ROUTE, () => new Response(null, { status: 404 }));
     expect(text(await removeListingImage(toolDeps(), { listing_id: 555, listing_image_id: 9 }))).toBe(

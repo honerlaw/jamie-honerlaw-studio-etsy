@@ -5,12 +5,20 @@ interface Entry {
   readonly expiresAt: number;
   // While set and in the future, one caller holds an exclusive lease (see `claim`).
   readonly leaseUntil?: number;
+  // Identifies that lease, so only its holder can update, finish or release the entry.
+  readonly leaseId?: string;
 }
 
 // What `peek` reports about a live entry.
 export interface PeekResult {
   readonly value: string;
   readonly leased: boolean;
+}
+
+// What `claim` hands its caller: the value, and the lease id the leased calls need.
+export interface Claimed {
+  readonly value: string;
+  readonly lease: string;
 }
 
 // Single-use values with a time limit: OAuth `state`, confirmation tokens and photo
@@ -46,21 +54,24 @@ export class OneTimeStore extends DurableObject {
     return { value: entry.value, leased: (entry.leaseUntil ?? 0) > Date.now() };
   }
 
-  // Takes an exclusive lease for `leaseMs` and returns the value, or null when the entry
-  // is gone, expired or already leased. A lease that runs out frees itself, so a caller
-  // that crashed mid-way can't lock the entry forever.
-  claim(key: string, leaseMs: number): string | null {
+  // Takes an exclusive lease for `leaseMs` and returns the value with a lease id, or null
+  // when the entry is gone, expired or already leased. A lease that runs out frees
+  // itself, so a caller that crashed mid-way can't lock the entry forever.
+  claim(key: string, leaseMs: number): Claimed | null {
     const entry = this.live(key);
     if (entry === undefined || (entry.leaseUntil ?? 0) > Date.now()) {
       return null;
     }
-    this.ctx.storage.kv.put<Entry>(key, { ...entry, leaseUntil: Date.now() + leaseMs });
-    return entry.value;
+    const lease = crypto.randomUUID();
+    this.ctx.storage.kv.put<Entry>(key, { ...entry, leaseUntil: Date.now() + leaseMs, leaseId: lease });
+    return { value: entry.value, lease };
   }
 
-  // Replaces a live entry's value, keeping its expiry and any lease. False when gone.
-  update(key: string, value: string): boolean {
-    const entry = this.live(key);
+  // Replaces the value, keeping its expiry and lease, but only for the lease's holder.
+  // False when the entry is gone or was replaced or re-claimed since (a `put` drops the
+  // lease), so a slow holder can't overwrite a newer entry.
+  update(key: string, lease: string, value: string): boolean {
+    const entry = this.held(key, lease);
     if (entry === undefined) {
       return false;
     }
@@ -68,9 +79,18 @@ export class OneTimeStore extends DurableObject {
     return true;
   }
 
-  // Ends a lease early so the next `claim` can proceed.
-  release(key: string): void {
-    const entry = this.live(key);
+  // Deletes the entry for the lease's holder: the leased counterpart of `consume`.
+  finish(key: string, lease: string): boolean {
+    const entry = this.held(key, lease);
+    if (entry !== undefined) {
+      this.ctx.storage.kv.delete(key);
+    }
+    return entry !== undefined;
+  }
+
+  // Ends the holder's lease early so the next `claim` can proceed.
+  release(key: string, lease: string): void {
+    const entry = this.held(key, lease);
     if (entry !== undefined) {
       this.ctx.storage.kv.put<Entry>(key, { value: entry.value, expiresAt: entry.expiresAt });
     }
@@ -90,6 +110,12 @@ export class OneTimeStore extends DurableObject {
     if (next !== undefined) {
       await this.ctx.storage.setAlarm(next);
     }
+  }
+
+  // The live entry if this lease (expired or not) is still the latest one taken on it.
+  private held(key: string, lease: string): Entry | undefined {
+    const entry = this.live(key);
+    return entry?.leaseId === lease ? entry : undefined;
   }
 
   // The entry if it exists and hasn't expired; an expired one is deleted on sight.

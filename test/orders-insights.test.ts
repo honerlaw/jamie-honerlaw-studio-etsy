@@ -143,11 +143,43 @@ describe("get_sales_summary", () => {
     );
     expect(summary).toMatchObject({
       orders: 3,
-      revenue: { USD: 90 },
+      item_sales: { USD: 75 },
+      shipping: { USD: 12 },
+      refunded: {},
+      fully_refunded_orders: 0,
       top_listings: [{ listing_id: 555, title: "Blue mug", quantity: 6, revenue: 75 }],
     });
     expect(summary["note"]).toMatch(/visits.*search terms.*conversion/u);
     expect(summary).not.toHaveProperty("truncated");
+  });
+
+  it("leaves out tax and fully refunded orders, and totals partial refunds", async () => {
+    const usd = (amount: number) => ({ amount, divisor: 100, currency_code: "USD" });
+    etsy.routes.set(RECEIPTS, () =>
+      Response.json({
+        count: 3,
+        results: [
+          receipt({ receipt_id: 1 }),
+          receipt({
+            receipt_id: 2,
+            status: "partially refunded",
+            refunds: [{ amount: usd(500), reason: "chipped", note_from_issuer: "sorry" }],
+          }),
+          receipt({ receipt_id: 3, status: "fully refunded", refunds: [{ amount: usd(3000) }] }),
+        ],
+      }),
+    );
+    const summary = resultJson<Record<string, unknown>>(
+      await getSalesSummary(toolDeps(), { from: "2026-11-01", to: "2026-11-10" }),
+    );
+    expect(summary).toMatchObject({
+      orders: 2,
+      item_sales: { USD: 50 },
+      shipping: { USD: 8 },
+      refunded: { USD: 5 },
+      fully_refunded_orders: 1,
+    });
+    expect(JSON.stringify(summary)).not.toMatch(/chipped|sorry/u);
   });
 
   it("stops at 30 pages and says so", async () => {
@@ -173,7 +205,13 @@ describe("get_sales_summary", () => {
     etsy.routes.set(RECEIPTS, () =>
       Response.json({
         count: 1,
-        results: [receipt({ grandtotal: null, transactions: [{ transaction_id: 1, quantity: 1 }] })],
+        results: [
+          receipt({
+            subtotal: null,
+            total_shipping_cost: null,
+            transactions: [{ transaction_id: 1, quantity: 1 }],
+          }),
+        ],
       }),
     );
     const summary = resultJson<Record<string, unknown>>(
@@ -181,7 +219,7 @@ describe("get_sales_summary", () => {
     );
     expect(summary).toMatchObject({
       orders: 1,
-      revenue: {},
+      item_sales: {},
       top_listings: [{ listing_id: 0, title: "(untitled)", revenue: 0 }],
     });
   });

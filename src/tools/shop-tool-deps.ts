@@ -1,5 +1,5 @@
 import type { EtsyClient } from "../etsy/create-etsy-client";
-import type { PeekResult } from "../storage/one-time-store";
+import type { Claimed, PeekResult } from "../storage/one-time-store";
 import type { AccessResult, VaultStatus } from "../vault/token-vault";
 
 // The OneTimeStore operations tools use (confirmation tokens and upload sessions).
@@ -7,9 +7,10 @@ export interface OneTimeStoreApi {
   put(key: string, value: string, ttlMs: number): Promise<void>;
   consume(key: string): Promise<string | null>;
   peek(key: string): Promise<PeekResult | null>;
-  claim(key: string, leaseMs: number): Promise<string | null>;
-  update(key: string, value: string): Promise<boolean>;
-  release(key: string): Promise<void>;
+  claim(key: string, leaseMs: number): Promise<Claimed | null>;
+  update(key: string, lease: string, value: string): Promise<boolean>;
+  finish(key: string, lease: string): Promise<boolean>;
+  release(key: string, lease: string): Promise<void>;
 }
 
 // What a tool may touch. Built per request by the MCP handler; tests build fakes.

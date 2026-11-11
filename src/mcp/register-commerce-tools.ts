@@ -104,7 +104,7 @@ export function registerCommerceTools(server: McpServer, deps: ShopToolDeps): vo
   addTool(server, {
     name: "get_sales_summary",
     title: "Sales summary",
-    description: `Revenue, number of orders and best-selling listings between two dates. ${METRICS_NOTE}`,
+    description: `Item sales (after coupons, before tax and shipping), shipping, refunds, number of orders and best-selling listings between two dates. Fully refunded orders are left out. Etsy fees aren't deducted. ${METRICS_NOTE}`,
     input: z.object({ from: DAY, to: DAY }),
     readOnly: true,
     destructive: false,

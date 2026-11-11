@@ -79,7 +79,12 @@ export function registerListingTools(server: McpServer, deps: ShopToolDeps): voi
     input: z.object({
       listing_id: LISTING_ID,
       title: z.string().trim().min(1).max(140).optional(),
-      should_auto_renew: z.boolean().optional(),
+      // Only off: turning auto-renew on commits her to a listing fee on every renewal,
+      // which she wanted confirmed, so that stays in Etsy.
+      should_auto_renew: z
+        .literal(false)
+        .optional()
+        .describe("false turns auto-renew off. Turning it on (a fee each renewal) is done in Etsy."),
       ...OPTIONAL_LISTING_FIELDS,
     }),
     readOnly: false,
