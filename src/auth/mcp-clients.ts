@@ -10,13 +10,20 @@ export interface McpClient {
   readonly redirectUris: readonly string[];
 }
 
+// The library refuses a registered redirect URI with a fragment or user info, so the
+// config does too, rather than every sign-in failing later.
+function isPlainRedirect(uri: string): boolean {
+  const url = new URL(uri);
+  return !uri.includes("#") && url.username === "" && url.password === "";
+}
+
 const CLIENTS = z
   .array(
     z.object({
       id: z.string().regex(/^[a-z0-9][a-z0-9-]{2,39}$/u),
       name: z.string().min(1).max(60),
       secret: z.string().min(32),
-      redirectUris: z.array(z.url({ protocol: /^https$/u })).min(1),
+      redirectUris: z.array(z.url({ protocol: /^https$/u }).refine(isPlainRedirect)).min(1),
     }),
   )
   .min(1)
@@ -34,7 +41,9 @@ export function parseMcpClients(json: string): readonly McpClient[] {
   }
   const parsed = CLIENTS.safeParse(decoded);
   if (!parsed.success) {
-    throw new TypeError("MCP_CLIENTS must be a non-empty list of {id, name, secret (32+ chars), redirectUris}");
+    throw new TypeError(
+      "MCP_CLIENTS must be a non-empty list of {id, name, secret (32+ chars), redirectUris (plain https)}",
+    );
   }
   return parsed.data;
 }

@@ -61,7 +61,7 @@ Local development uses `.dev.vars` (copy `.dev.vars.example`) and `npm run dev`.
 ]
 ```
 
-Ids are 3–40 characters of lowercase letters, digits and `-`. Secrets need at least 32 characters. Redirect URIs must be `https` and match exactly what the app sends. If an app's connector settings show a different callback URL, add that URL here. If the secret is missing or malformed, every route except `/health` answers 503, so nothing is open by accident. The Worker writes changes to its OAuth client records itself on the next `/authorize` or `/token` request.
+Ids are 3–40 characters of lowercase letters, digits and `-`. Secrets need at least 32 characters. Redirect URIs must be plain `https` (no `#` fragment, no user info) and match exactly what the app sends. If an app's connector settings show a different callback URL, add that URL here. If the secret is missing or malformed, every route except `/health` answers 503, so nothing is open by accident. The Worker brings its OAuth client records in line with the list on the next `/authorize` or `/token` request. Cloudflare KV can serve a cached copy for about a minute in other locations, so a changed secret can take that long to apply everywhere.
 
 **Cost:** everything here runs on the Workers Free plan. If the logs ever show CPU-limit errors, Workers Paid ($5/month) is the fix.
 
@@ -72,8 +72,8 @@ Ids are 3–40 characters of lowercase letters, digits and `-`. Secrets need at 
 - **Rotate the vault key:** add a new key next to the old one (`{"k1":"…","k2":"…"}`) and set `TOKEN_ENC_KID` to `k2`. The vault re-seals its record under `k2` the next time it's read. After that, remove `k1`. Dropping a key whose record hasn't been re-sealed means she reconnects once.
 - **Change who is allowed:** update `ALLOWED_ETSY_USER_ID` and `ALLOWED_ETSY_SHOP_ID`. Grants for the old ids stop working at once (`/mcp` re-checks them on every call).
 - **Add an MCP client:** add an entry to `MCP_CLIENTS` and `npx wrangler secret put MCP_CLIENTS`. Then enter its id and secret in the app.
-- **Cut one app off:** remove its entry from `MCP_CLIENTS` and put the secret again. Its tokens stop working at once (`/mcp` re-checks the client on every call), and it can't get new ones.
-- **Rotate an app's secret:** change its `secret` in `MCP_CLIENTS`, put the secret, and update the secret in the app. Existing tokens keep working until they expire. To cut them off too, run `scripts/revoke-all-grants.sh`.
+- **Cut one app off:** remove its entry from `MCP_CLIENTS` and put the secret again. Its tokens stop working at once (`/mcp` re-checks the client on every call), and it can't get new ones. If you remove it because its secret leaked, also run `scripts/revoke-all-grants.sh`. Otherwise, re-adding the same id later would revive its unexpired access tokens for up to an hour.
+- **Rotate an app's secret:** change its `secret` in `MCP_CLIENTS`, put the secret, and update the secret in the app. Existing access tokens keep working until they expire (up to an hour). Refreshing them needs the new secret. To cut them off at once, run `scripts/revoke-all-grants.sh`.
 
 ## Branch protection
 

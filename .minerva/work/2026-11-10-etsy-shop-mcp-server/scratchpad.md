@@ -28,6 +28,8 @@
 - [user-directed] review finding #5 (unauthenticated DCR can exhaust the Free-plan KV write quota): user: "this is not a public app that other people can consume... there doesn't need to be signup / consent" → folded into the same replan
 - [user-directed] new-plan acceptance (replan 2026-11-10): closed `MCP_CLIENTS` list of confidential clients, no DCR, no consent page; the user's answer is applied as the panel's accept (round-table escalation rule)
 - [solo] client provisioning: write a minimal base record only when `lookupClient` is null, then set name/redirects/secret through the library's public `updateClient` (it hashes the secret), re-synced only when an entry's fingerprint changes (tier: solo — internal to the approved replan; test/clients.test.ts runs the full flow against the pinned library, so a record-shape change fails CI)
+- [reviewed — clean] completion verification (phase 2, after replan): Verifier reran all gates (156 tests, 99.5% statements) and accepted criteria 1–11 with test evidence; 12 (owner connects) legitimately deferred. Advisories: no end-to-end chatgpt-client test; no unlisted client_id in a /token form body end to end; a lost OAUTH_KV client record with a surviving fingerprint is never re-provisioned (fails closed) (tier: reviewer floor — the interface is the one the replan approved)
+- [solo] review triage (phase 2, after replan): 4 FIX / 0 SUGGEST / 0 IGNORE from the auth security review (tier: default-solo row — each finding had a concrete failure scenario and an absorbable fix, none had two defensible dispositions, none changes an approved interface). Supersedes the earlier [solo] client-provisioning line: the SHOP_KV marker plus `updateClient` design is replaced by a direct compare-and-put of the record
 
 ## Work notes — Phase 2 (2026-11-10)
 - **MCP transport:** `@modelcontextprotocol/sdk` 1.32.2 `WebStandardStreamableHTTPServerTransport` in stateless JSON mode, with a fresh `McpServer` per request. No `agents` dependency, and no McpAgent DO.
@@ -92,6 +94,13 @@ Independent diff review plus the Verifier's gap, 6 findings:
 4. FIX: key-ring parse errors and an unexpected tool error could echo secret material. They now use fixed messages, plus `tool_failed` / `vault_store_failed` log events with no detail.
 5. REPLAN (user-directed): unauthenticated `/register` could exhaust the Free-plan KV write quota. It's gone with registration.
 6. FIX (Verifier): the README first deploy would fail under `secrets.required`. It now uses `--secrets-file .dev.vars` in bootstrap mode, and `.dev.vars.example` defaults the allowlist to `unset`.
+
+Auth security review of the replan commit (3caece9), 4 findings, nothing high:
+7. FIX (medium): `ensureClients` ignored `updateClient`'s null result (a stale KV negative read right after the base put) and wrote its SHOP_KV marker anyway, which could leave a client with no secret for good. A lost OAUTH_KV record was never repaired either. Now: no marker. Each record is read and compared (secret hash, name, redirect URIs), then rewritten in one put when missing or different, so it repairs itself.
+8. FIX (low): the gate split the Basic scheme on `\s` while the library splits on `[ \t]`. A `Basic<U+00A0>` header plus a body `client_id` let a removed-but-still-stored id past the gate (its tokens still failed at /mcp). The gate now mirrors the library's parser exactly and requires every claimed client_id (Basic and form body, all values) to be listed.
+9. FIX (low): redirect URIs with a fragment or user info passed zod but made the library throw on every request (a 500, and it blocked later clients). zod now rejects them, and any sync failure answers the fail-closed 503 (`config_invalid`/`client_sync`).
+10. FIX (low, docs): the ~60s KV propagation for a rotated secret, and running revoke-all-grants after removing a leaked client (re-adding the id would otherwise revive unexpired access tokens), are now in the README runbook.
+Verifier advisories folded as tests: the ChatGPT client authenticates at /token, an unlisted body client_id is refused end to end, and a lost record is repaired.
 
 ## Mode B promotions (phase 1)
 - import-x resolver/parsers constraint → promoted to .minerva/knowledge/2026-11-10-constraint-import-x-needs-typescript-resolver-and-parsers.md

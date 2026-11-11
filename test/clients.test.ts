@@ -2,12 +2,10 @@ import { createExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getOAuthApi } from "@cloudflare/workers-oauth-provider";
 import { ensureClients } from "../src/auth/ensure-clients";
 import { handleRequest } from "../src/auth/handle-request";
 import { parseMcpClients } from "../src/auth/mcp-clients";
-import { providerOptions } from "../src/auth/provider-options";
-import { requestedClientId } from "../src/auth/requested-client-id";
+import { requestedClientIds } from "../src/auth/requested-client-ids";
 import { mockEtsy } from "./support/etsy-mock";
 import {
   authorizationCode,
@@ -64,6 +62,8 @@ describe("parseMcpClients", () => {
     ["a short secret", JSON.stringify([entry({ secret: "short" })])],
     ["an http redirect URI", JSON.stringify([entry({ redirectUris: ["http://claude.ai/cb"] })])],
     ["no redirect URIs", JSON.stringify([entry({ redirectUris: [] })])],
+    ["a redirect URI with a fragment", JSON.stringify([entry({ redirectUris: [`${CLAUDE_REDIRECT}#`] })])],
+    ["a redirect URI with user info", JSON.stringify([entry({ redirectUris: ["https://user@claude.ai/cb"] })])],
     ["an id with odd characters", JSON.stringify([entry({ id: "Claude App" })])],
     ["a duplicate id", JSON.stringify([entry(), entry()])],
   ])("rejects %s with a fixed message that never quotes the secret", (_case, json) => {
@@ -180,48 +180,104 @@ describe("removing a client from the list", () => {
 
 describe("ensureClients", () => {
   const clients = parseMcpClients(JSON.stringify([entry({ id: "rotating" })]));
-  const oauth = () => getOAuthApi(providerOptions(ORIGIN, clients), env);
 
-  it("creates the record once and skips unchanged clients", async () => {
-    await ensureClients(oauth(), env, clients);
+  it("writes the record once, hashes the secret, and skips an unchanged client", async () => {
+    await ensureClients(env, clients);
     const first = await env.OAUTH_KV.get("client:rotating");
+    expect(first).not.toBeNull();
     expect(first).not.toContain(SECRET);
-    await ensureClients(oauth(), env, clients);
-    expect(await env.OAUTH_KV.get("client:rotating")).toBe(first);
-    expect(await oauth().lookupClient("rotating")).toMatchObject({
-      clientName: "Claude",
-      redirectUris: [CLAUDE_REDIRECT],
-    });
+    const put = vi.spyOn(env.OAUTH_KV, "put");
+    await ensureClients(env, clients);
+    expect(put).not.toHaveBeenCalled();
   });
 
-  it("rotates the secret when the list changes", async () => {
-    await ensureClients(oauth(), env, clients);
+  it("rewrites the record when the secret, name or redirect URIs change", async () => {
+    await ensureClients(env, clients);
     const before = await env.OAUTH_KV.get<{ clientSecret: string }>("client:rotating", "json");
-    const rotated = parseMcpClients(JSON.stringify([entry({ id: "rotating", secret: `${SECRET}-2` })]));
-    await ensureClients(oauth(), env, rotated);
+    await ensureClients(env, parseMcpClients(JSON.stringify([entry({ id: "rotating", secret: `${SECRET}-2` })])));
     const after = await env.OAUTH_KV.get<{ clientSecret: string }>("client:rotating", "json");
     expect(after?.clientSecret).not.toBe(before?.clientSecret);
+    await ensureClients(env, parseMcpClients(JSON.stringify([entry({ id: "rotating", name: "Renamed" })])));
+    expect(await env.OAUTH_KV.get("client:rotating", "json")).toMatchObject({ clientName: "Renamed" });
+  });
+
+  it("repairs a lost client record on the next sign-in", async () => {
+    await connect();
+    await env.OAUTH_KV.delete(`client:${CLAUDE_ID}`);
+    const { accessToken } = await connect();
+    expect((await mcp(accessToken, "tools/list")).status).toBe(200);
+  });
+
+  it("provisions every listed client, so ChatGPT's secret authenticates too", async () => {
+    await call(`/authorize?${authorizeQuery(CLAUDE_ID)}`);
+    const chatgpt = parseMcpClients(env.MCP_CLIENTS).find((client) => client.id === "chatgpt");
+    const response = await tokenRequest({ grant_type: "authorization_code", code: "not-a-code" }, [
+      "chatgpt",
+      chatgpt?.secret ?? "",
+    ]);
+    expect(response.status).toBe(400);
+    expect(await response.json<{ error: string }>()).toMatchObject({ error: "invalid_grant" });
+  });
+
+  it("fails closed with a 503 when the records can't be written", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const broken = {
+      get: () => Promise.resolve(null),
+      put: () => Promise.reject(new Error("429 too many writes")),
+    } as unknown as KVNamespace;
+    const response = await withEnv(`/authorize?${authorizeQuery(CLAUDE_ID)}`, { OAUTH_KV: broken });
+    expect(response.status).toBe(503);
+    expect(spy).toHaveBeenCalledWith('{"event":"config_invalid","reason":"client_sync"}');
   });
 });
 
-describe("requestedClientId", () => {
-  const token = (init: RequestInit) => new Request(`${ORIGIN}/token`, { method: "POST", ...init });
+describe("requestedClientIds", () => {
+  const form = { "content-type": "application/x-www-form-urlencoded" };
+  const token = (headers: Record<string, string>, body?: string) =>
+    requestedClientIds(new Request(`${ORIGIN}/token`, { method: "POST", headers, body: body ?? null }));
 
-  it("reads Basic credentials, a form body, or nothing", async () => {
-    expect(await requestedClientId(token({ headers: { authorization: basicAuth("a%20b", "s") } }))).toBe("a b");
-    expect(await requestedClientId(token({ headers: { authorization: "Basic !!!" } }))).toBeUndefined();
-    expect(await requestedClientId(token({ headers: { authorization: basicAuth("", "s") } }))).toBeUndefined();
+  it("reads Basic credentials the way the library does", async () => {
+    expect(await token({ authorization: basicAuth("a%20b+c", "s") })).toStrictEqual(["a b c"]);
+    expect(await token({ authorization: `bAsIc\t${btoa("x:s")}` })).toStrictEqual(["x"]);
+    expect(await token({ authorization: "Basic !!!" })).toStrictEqual([""]);
+    expect(await token({ authorization: "Basic" })).toStrictEqual([""]);
+    expect(await token({ authorization: `Basic ${btoa("no-separator")}` })).toStrictEqual([""]);
+    expect(await token({ authorization: `Basic ${btoa("a:s")} extra` })).toStrictEqual([""]);
+    expect(await token({ authorization: "Bearer abc" })).toStrictEqual([]);
+  });
+
+  it("doesn't treat a non-space separator as Basic, and still checks the body", async () => {
+    const ids = await token({ ...form, authorization: `Basic\u00a0${btoa(`${CLAUDE_ID}:s`)}` }, "client_id=removed");
+    expect(ids).toStrictEqual(["removed"]);
+  });
+
+  it("collects every non-empty client_id in a form body, whatever the content-type case", async () => {
+    expect(await token(form, "client_id=&client_id=x&client_id=y")).toStrictEqual(["x", "y"]);
     expect(
-      await requestedClientId(
-        token({ headers: { "content-type": "application/x-www-form-urlencoded" }, body: "client_id=x" }),
-      ),
-    ).toBe("x");
-    expect(
-      await requestedClientId(token({ headers: { "content-type": "application/x-www-form-urlencoded" }, body: "" })),
-    ).toBeUndefined();
-    expect(
-      await requestedClientId(token({ headers: { "content-type": "application/json" }, body: "{}" })),
-    ).toBeUndefined();
-    expect(await requestedClientId(new Request(`${ORIGIN}/authorize`))).toBeUndefined();
+      await token({ "content-type": " Application/X-WWW-Form-Urlencoded; charset=utf-8" }, "client_id=x"),
+    ).toStrictEqual(["x"]);
+    expect(await token({ "content-type": "application/json" }, "{}")).toStrictEqual([]);
+    expect(await token({})).toStrictEqual([]);
+  });
+
+  it("reads every client_id on /authorize", async () => {
+    const ids = await requestedClientIds(new Request(`${ORIGIN}/authorize?client_id=a&client_id=b`));
+    expect(ids).toStrictEqual(["a", "b"]);
+  });
+});
+
+describe("the gate end to end", () => {
+  it("refuses an unlisted client_id in a /token form body", async () => {
+    const response = await tokenRequest({ grant_type: "refresh_token", refresh_token: "x", client_id: "removed" });
+    expect(response.status).toBe(401);
+  });
+
+  it("refuses a listed and an unlisted client_id together", async () => {
+    const response = await call(`/authorize?${authorizeQuery(CLAUDE_ID)}&client_id=someone-else`);
+    expect(response.status).toBe(401);
+  });
+
+  it("refuses a /token request that names no client", async () => {
+    expect((await tokenRequest({ grant_type: "refresh_token", refresh_token: "x" })).status).toBe(401);
   });
 });
