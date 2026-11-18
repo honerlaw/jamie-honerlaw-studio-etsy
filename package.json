@@ -26,7 +26,7 @@
     "apply-environment": "node scripts/apply-environment.ts"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "1.7.0",
+    "@cloudflare/vitest-plugin": "1.8.2",
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@eslint/js": "10.0.1",
     "@onerlaw/agentic-eslint-plugin": "0.2.0",
@@ -43,7 +43,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.72.2",
     "vitest": "5.1.0",
-    "wrangler": "4.160.0",
+    "wrangler": "4.162.0",
     "yaml": "2.9.1"
   },
   "allowScripts": {
